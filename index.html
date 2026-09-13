@@ -1,0 +1,301 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>La Denrée Studio — One-button games. Precious little things.</title>
+<meta name="description" content="La Denrée Studio is a solo indie game studio from France making one-button arcade games for web and mobile. First game: Hollow Run.">
+<meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#0B1020">
+<meta property="og:title" content="La Denrée Studio">
+<meta property="og:description" content="One-button games. Precious little things.">
+<meta property="og:type" content="website">
+<meta property="og:image" content="assets/hollow-run-cover.webp">
+<link rel="icon" type="image/png" sizes="64x64" href="assets/favicon.png">
+<link rel="apple-touch-icon" href="assets/logo-mark.png">
+<style>
+  :root {
+    --bg: #0B1020;
+    --bg-2: #0F1630;
+    --cyan: #00F0FF;
+    --magenta: #FF2D95;
+    --yellow: #FFD60A;
+    --indigo: #3D5AFE;
+    --ui: #E8F1FF;
+    --muted: #9AA8C7;
+    --line: rgba(61, 90, 254, 0.28);
+    --radius: 14px;
+    --max: 1040px;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ui);
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, Ubuntu, Cantarell, "Helvetica Neue", Arial, sans-serif;
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+  #circuit {
+    position: fixed; inset: 0; z-index: 0;
+    width: 100%; height: 100%;
+    pointer-events: none;
+  }
+  .page { position: relative; z-index: 1; }
+  a { color: var(--cyan); text-decoration: none; }
+  a:hover, a:focus-visible { text-decoration: underline; }
+  :focus-visible { outline: 2px solid var(--yellow); outline-offset: 3px; }
+  .wrap { max-width: var(--max); margin: 0 auto; padding: 0 20px; }
+
+  /* Header */
+  header.top {
+    display: flex; align-items: center; justify-content: space-between; gap: 16px;
+    padding: 18px 0;
+  }
+  .brand { display: flex; align-items: center; gap: 12px; color: var(--ui); }
+  .brand img { height: 44px; width: auto; display: block; }
+  .brand .name { font-weight: 700; font-size: 1.15rem; letter-spacing: 0.01em; }
+  .brand .name .accent { color: var(--cyan); text-shadow: 0 0 10px rgba(0, 240, 255, 0.7); }
+  nav.menu { display: flex; gap: 18px; font-size: 0.95rem; }
+  nav.menu a { color: var(--muted); }
+  nav.menu a:hover { color: var(--ui); }
+
+  /* Hero */
+  .hero { padding: 48px 0 32px; text-align: center; }
+  .hero .logo { max-width: 620px; width: 88%; height: auto; display: block; margin: 0 auto 26px; }
+  .hero h1 {
+    font-size: clamp(1.9rem, 4.6vw, 3.1rem);
+    line-height: 1.12; margin: 0 0 10px; font-weight: 800; letter-spacing: -0.01em;
+  }
+  .hero h1 .hi { color: var(--cyan); }
+  .hero .sub { color: var(--muted); font-size: clamp(1rem, 2vw, 1.2rem); margin: 0 auto; max-width: 620px; }
+  .hero .sub em { font-style: italic; color: var(--ui); }
+  .hero .flag { display: inline-block; margin-top: 18px; padding: 6px 12px; border: 1px solid var(--line);
+    border-radius: 999px; color: var(--muted); font-size: 0.85rem; }
+
+  /* Sections */
+  section { padding: 36px 0; }
+  h2 { font-size: clamp(1.4rem, 3vw, 1.9rem); margin: 0 0 18px; }
+  h2 .tag { display: inline-block; font-size: 0.7rem; letter-spacing: 0.18em; text-transform: uppercase;
+    color: var(--magenta); margin-right: 10px; vertical-align: middle; font-weight: 700; }
+  .card {
+    background: linear-gradient(180deg, rgba(15, 22, 48, 0.92), rgba(11, 16, 32, 0.92));
+    border: 1px solid var(--line); border-radius: var(--radius);
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.35);
+  }
+  .game { display: grid; grid-template-columns: 1.15fr 1fr; gap: 28px; padding: 22px; align-items: center; }
+  .game .cover { position: relative; border-radius: 10px; overflow: hidden; border: 1px solid rgba(0, 240, 255, 0.25); }
+  .game .cover img { width: 100%; height: auto; display: block; }
+  .game .cover .ribbon { position: absolute; top: 12px; left: 12px; background: var(--magenta); color: #fff;
+    font-weight: 700; font-size: 0.75rem; letter-spacing: 0.08em; padding: 4px 10px; border-radius: 6px; }
+  .game h3 { margin: 0 0 8px; font-size: 1.6rem; }
+  .game p { margin: 0 0 12px; color: var(--ui); }
+  .game .meta { color: var(--muted); font-size: 0.9rem; margin-bottom: 18px; }
+  .btns { display: flex; flex-wrap: wrap; gap: 12px; }
+  .btn {
+    display: inline-flex; align-items: center; gap: 8px; padding: 12px 20px; border-radius: 10px;
+    font-weight: 700; font-size: 0.98rem; border: 1px solid transparent; transition: transform .12s ease, box-shadow .12s ease;
+  }
+  .btn:hover { text-decoration: none; transform: translateY(-1px); }
+  .btn.primary { background: var(--cyan); color: #04101a; box-shadow: 0 0 22px rgba(0, 240, 255, 0.35); }
+  .btn.primary:hover { box-shadow: 0 0 30px rgba(0, 240, 255, 0.55); }
+  .btn.ghost { color: var(--ui); border-color: rgba(232, 241, 255, 0.35); background: rgba(232, 241, 255, 0.04); }
+  .btn.ghost:hover { border-color: var(--magenta); color: #fff; box-shadow: 0 0 18px rgba(255, 45, 149, 0.35); }
+  .btn svg { width: 18px; height: 18px; fill: currentColor; }
+
+  .about { padding: 24px; }
+  .about p { margin: 0 0 10px; }
+  .about .row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-top: 14px; }
+  .about .pill { border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; color: var(--muted); font-size: 0.92rem; }
+  .about .pill b { display: block; color: var(--ui); margin-bottom: 2px; }
+
+  /* Footer */
+  footer { padding: 34px 0 44px; color: var(--muted); font-size: 0.92rem; border-top: 1px solid var(--line); margin-top: 24px; }
+  footer .cols { display: flex; flex-wrap: wrap; gap: 18px 36px; justify-content: space-between; align-items: flex-start; }
+  footer ul { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 8px 18px; }
+  footer a { color: var(--muted); }
+  footer a:hover { color: var(--cyan); }
+  footer .mark { display: flex; align-items: center; gap: 10px; }
+  footer .mark img { width: 30px; height: 30px; }
+  footer .legal { margin-top: 18px; display: flex; flex-wrap: wrap; gap: 8px 18px; }
+
+  @media (max-width: 760px) {
+    nav.menu { display: none; }
+    .hero { padding: 30px 0 20px; }
+    .game { grid-template-columns: 1fr; padding: 16px; gap: 18px; }
+    .about .row { grid-template-columns: 1fr; }
+    .btn { width: 100%; justify-content: center; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    html { scroll-behavior: auto; }
+    .btn { transition: none; }
+  }
+</style>
+</head>
+<body>
+<canvas id="circuit" aria-hidden="true"></canvas>
+
+<div class="page">
+  <div class="wrap">
+    <header class="top">
+      <a class="brand" href="#top" aria-label="La Denrée Studio — home">
+        <img src="assets/logo-mark.png" alt="" width="44" height="44">
+        <span class="name">La Denr<span class="accent">é</span>e Studio</span>
+      </a>
+      <nav class="menu" aria-label="Sections">
+        <a href="#hollow-run">Hollow Run</a>
+        <a href="#about">About</a>
+        <a href="#contact">Contact</a>
+      </nav>
+    </header>
+
+    <main id="top">
+      <section class="hero">
+        <img class="logo" src="assets/logo.png" alt="La Denrée Studio logo: a small alien holding a flying saucer next to the studio name" width="1200" height="335">
+        <h1>One-button games.<br><span class="hi">Precious little things.</span></h1>
+        <p class="sub">Des jeux à un bouton, faits en France. <em>Denrée</em> : « a precious little thing ».</p>
+        <span class="flag">Solo indie studio · France · Web &amp; mobile</span>
+      </section>
+
+      <section id="hollow-run">
+        <h2><span class="tag">Now playing</span>Hollow Run</h2>
+        <div class="card game">
+          <div class="cover">
+            <img src="assets/hollow-run-cover.webp" alt="Hollow Run cover: a cyan ghost running along a neon circuit rail, passing through magenta walls while golden coins burst out" width="1280" height="720">
+            <span class="ribbon">FIRST GAME</span>
+          </div>
+          <div>
+            <h3>Hold to become a ghost. Release to grab the coins.</h3>
+            <p>Hollow Run is a one-button rhythm runner. Hold to turn into a ghost and pass straight through the magenta walls; release to stay solid, dodge the crackling cyan fields and collect the golden coins.</p>
+            <p>Twelve hand-tuned levels with a rising tempo, a fresh seeded Daily Line every day, PERFECT timing and the SURGE super-power. Short sessions, instant retry: easy to learn, hard to perfect.</p>
+            <div class="meta">Arcade · Rhythm · One-button · Touch, mouse or keyboard · Portrait &amp; landscape</div>
+            <div class="btns">
+              <a class="btn primary" id="btn-play" href="https://ladenreestudio.itch.io/hollow-run" rel="noopener">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>
+                Play on itch.io
+              </a>
+              <a class="btn ghost" id="btn-watch" href="https://www.youtube.com/@ladenreestudio" rel="noopener">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21.6 7.2a2.5 2.5 0 0 0-1.8-1.8C18.2 5 12 5 12 5s-6.2 0-7.8.4A2.5 2.5 0 0 0 2.4 7.2 26 26 0 0 0 2 12a26 26 0 0 0 .4 4.8 2.5 2.5 0 0 0 1.8 1.8C5.8 19 12 19 12 19s6.2 0 7.8-.4a2.5 2.5 0 0 0 1.8-1.8A26 26 0 0 0 22 12a26 26 0 0 0-.4-4.8zM10 15V9l5.2 3z"/></svg>
+                Watch
+              </a>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="about">
+        <h2><span class="tag">About</span>The studio</h2>
+        <div class="card about">
+          <p>La Denrée Studio is a solo indie game studio from France.</p>
+          <p>We make small one-button arcade games: one input, a clear rule, a rising tempo, and nothing in the way.</p>
+          <p>Our games run in the browser and on mobile, load fast, work offline and never ask for an account.</p>
+          <div class="row">
+            <div class="pill"><b>One button</b>Hold, release. That is the whole controller.</div>
+            <div class="pill"><b>Web &amp; mobile</b>HTML5, touch first, portrait and landscape.</div>
+            <div class="pill"><b>Made in France</b>The accent on the é is our signature.</div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer id="contact">
+      <div class="cols">
+        <div class="mark">
+          <img src="assets/logo-mark.png" alt="" width="30" height="30">
+          <span>La Denrée Studio · <a id="link-mail" href="mailto:CONTACT_EMAIL">CONTACT_EMAIL</a></span>
+        </div>
+        <ul>
+          <li><a id="link-itch" href="https://ladenreestudio.itch.io" rel="noopener">itch.io</a></li>
+          <li><a id="link-youtube" href="https://www.youtube.com/@ladenreestudio" rel="noopener">YouTube</a></li>
+          <li><a id="link-github" href="https://github.com/ladenreestudio" rel="noopener">GitHub</a></li>
+        </ul>
+      </div>
+      <div class="legal">
+        <span>© 2026 La Denrée Studio</span>
+        <a id="link-privacy" href="privacy.html">Privacy</a>
+        <span>No cookies, no trackers, no data collected.</span>
+      </div>
+    </footer>
+  </div>
+</div>
+
+<script>
+/* Discreet printed-circuit backdrop. Drawn once (and on resize), no animation loop,
+   no external requests. Respects prefers-reduced-motion by design (static). */
+(function () {
+  var canvas = document.getElementById('circuit');
+  if (!canvas || !canvas.getContext) return;
+  var ctx = canvas.getContext('2d');
+
+  function seeded(seed) {
+    var s = seed >>> 0;
+    return function () { s = (s * 1664525 + 1013904223) >>> 0; return s / 4294967296; };
+  }
+
+  function draw() {
+    var dpr = Math.min(window.devicePixelRatio || 1, 2);
+    var w = window.innerWidth, h = window.innerHeight;
+    canvas.width = Math.floor(w * dpr);
+    canvas.height = Math.floor(h * dpr);
+    canvas.style.width = w + 'px';
+    canvas.style.height = h + 'px';
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, w, h);
+
+    var rnd = seeded(20260913);
+    var step = Math.max(22, Math.round(Math.min(w, h) / 28));
+    var traces = Math.round((w * h) / 42000);
+    ctx.lineWidth = 1.2;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+
+    for (var i = 0; i < traces; i++) {
+      var x = Math.round(rnd() * (w / step)) * step;
+      var y = Math.round(rnd() * (h / step)) * step;
+      var segs = 2 + Math.floor(rnd() * 4);
+      var alpha = 0.10 + rnd() * 0.16;
+      ctx.strokeStyle = 'rgba(61, 90, 254, ' + alpha.toFixed(3) + ')';
+      ctx.beginPath();
+      ctx.moveTo(x, y);
+      for (var k = 0; k < segs; k++) {
+        var dir = rnd();
+        var len = step * (1 + Math.floor(rnd() * 3));
+        if (dir < 0.4) x += len;
+        else if (dir < 0.7) y += len;
+        else if (dir < 0.85) { x += len; y += len; }
+        else { x -= len; y += len; }
+        ctx.lineTo(x, y);
+      }
+      ctx.stroke();
+      // via (pad) at the end of the trace
+      ctx.fillStyle = 'rgba(61, 90, 254, ' + Math.min(0.6, alpha + 0.22).toFixed(3) + ')';
+      ctx.beginPath();
+      ctx.arc(x, y, 2.4, 0, Math.PI * 2);
+      ctx.fill();
+      // a few glowing cyan / magenta vias
+      if (rnd() < 0.10) {
+        var glow = rnd() < 0.5 ? '0, 240, 255' : '255, 45, 149';
+        ctx.fillStyle = 'rgba(' + glow + ', 0.55)';
+        ctx.shadowColor = 'rgba(' + glow + ', 0.9)';
+        ctx.shadowBlur = 10;
+        ctx.beginPath();
+        ctx.arc(x, y, 2.2, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.shadowBlur = 0;
+      }
+    }
+  }
+
+  var t = null;
+  window.addEventListener('resize', function () {
+    clearTimeout(t);
+    t = setTimeout(draw, 120);
+  });
+  draw();
+})();
+</script>
+</body>
+</html>
