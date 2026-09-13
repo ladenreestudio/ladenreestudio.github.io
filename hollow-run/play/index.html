@@ -4,7 +4,7 @@
 <script>window.GT_DISABLED=true;</script>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
-<title>Hollow Run</title><link rel="icon" type="image/png" sizes="64x64" href="favicon.png">
+<title>Hollow Run</title>
 <style>
   html, body { margin: 0; height: 100%; background: #0B1020; color: #E8F1FF; font-family: system-ui, -apple-system, "Segoe UI", sans-serif; overflow: hidden; }
   /* portal requirement (CrazyGames technical) : no text selection / magnifier on long press or double tap */
@@ -18,6 +18,8 @@
   button.pri { background: #00F0FF; color: #0B1020; border-color: #00F0FF; font-weight: 700; }
   button.warn { background: #FF2D95; color: #0B1020; border-color: #FF2D95; font-weight: 700; }
   button:disabled { opacity: .4; cursor: default; }
+  /* rewarded-ad buttons (Poki requirements) : video icon, never green, standard button first and at least as large */
+  .adicon { width: 16px; height: 16px; vertical-align: -3px; margin-right: 6px; }
   /* title screen (12.1) */
   #title { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 10px 12px; box-sizing: border-box; overflow: auto; pointer-events: none; }
   #title > * { pointer-events: none; }
@@ -124,7 +126,7 @@
   .board { font-size: 13px; max-height: 120px; overflow: auto; }
   .board div { display: flex; justify-content: space-between; padding: 2px 0; border-bottom: 1px solid rgba(232,241,255,.08); }
 </style>
-</head>
+<link rel="icon" href="favicon.png"></head>
 <body>
 <div id="stage">
   <canvas id="game"></canvas>
@@ -174,8 +176,8 @@
     <div class="why" id="deadCause"></div>
     <div class="btns">
       <button id="btnRetry" class="pri">Retry</button>
-      <button id="btnContinue" class="hidden">Continue (ad)</button>
-      <button id="btnSkip" class="warn hidden">Skip level (ad)</button>
+      <button id="btnContinue" class="hidden"><svg class="adicon" viewBox="0 0 24 24"><rect x="2" y="5" width="14" height="14" rx="2" fill="none" stroke="currentColor" stroke-width="2"/><path d="M16 10 L22 6 V18 L16 14 Z" fill="currentColor"/></svg>Continue (ad)</button>
+      <button id="btnSkip" class="warn hidden"><svg class="adicon" viewBox="0 0 24 24"><rect x="2" y="5" width="14" height="14" rx="2" fill="none" stroke="currentColor" stroke-width="2"/><path d="M16 10 L22 6 V18 L16 14 Z" fill="currentColor"/></svg>Skip level (ad)</button>
       <button id="btnDeadMenu">Menu</button>
     </div>
     <div class="tip">tap anywhere else to retry</div>
@@ -1997,6 +1999,99 @@
   if (GC.Telemetry && GC.Telemetry.init) { try { GC.Telemetry.init({ game: 'ghostline', build: (/test/.test(location.hash) ? 'test' : 'dev') }); } catch (e) { } }
   Ads.onEvent(function (name, d) { T(name, { placement: d.placement, granted: d.granted }); });
 
+  /* =================== 3b. Poki SDK adapter (portal build only) ===================
+     Active only when the build defines window.HR_PORTAL === 'poki' (tools/build_portal.py --target poki, which also puts the
+     official SDK <script> in <head>). Implements the GC.Ads adapter interface {name, init, rewarded, interstitial, gameplayStart,
+     gameplayStop, loadingStart, loadingStop} INSIDE the game ; the core skeleton (_lib/game-core/src/ads.js) is untouched.
+     Poki rules applied (sdk.poki.com html5 / sdk-documentation / requirements, read 2026-09-14) :
+       - PokiSDK.init() -> Promise ; script missing (adblock), init rejected or > 3 s : the game keeps Ads.Stub and stays playable,
+         no custom "ad blocked" message (Poki handles that on its side)
+       - PokiSDK.gameLoadingFinished() once, right after init resolves (title screen is ready)
+       - PokiSDK.gameplayStart() on every level / Daily start and on resume (Continue, tab back) ; PokiSDK.gameplayStop() on death,
+         win, tab hidden / blur, quit to menu ; never twice in a row (guard)
+       - PokiSDK.commercialBreak(onStart) -> Promise<void> before the next level and before a retry : audio muted, input disabled,
+         loop paused while it runs, restored after ; no internal ad timer (interstitialGapMs 0 : Poki decides the frequency)
+       - PokiSDK.rewardedBreak(onStart) -> Promise<boolean> for 'continue' and 'skip' (granted = resolved value ; false = no reward)
+       - never an ad call while S.mode === 'play'
+       - PokiSDK.setDebug(true) when the URL hash contains 'pokidebug' (local testing, verbose SDK log) */
+  var POKI_INIT_TIMEOUT_MS = 3000;
+  var AD_ICON = '<svg class="adicon" viewBox="0 0 24 24"><rect x="2" y="5" width="14" height="14" rx="2" fill="none" stroke="currentColor" stroke-width="2"/><path d="M16 10 L22 6 V18 L16 14 Z" fill="currentColor"/></svg>';
+  function adLabel(text) { return AD_ICON + text; }
+  /* ad gate : one flag for both break kinds ; adBegin is idempotent (the SDK onStart callback may or may not be called) */
+  var AD = { active: false, prevMuted: false, pausedLoop: false };
+  function adBegin() {
+    if (AD.active) return;
+    AD.active = true;
+    AD.prevMuted = audio.muted();
+    if (!AD.prevMuted) { audio.setMuted(true); audioSetMuted(true); }
+    audio.music('stop');
+    button.enable(false);
+    $('stage').style.pointerEvents = 'none';
+    if (loop && !loop.paused()) { loop.pause('ad'); AD.pausedLoop = true; }
+  }
+  function adEnd() {
+    if (!AD.active) return;
+    AD.active = false;
+    if (!AD.prevMuted) { audio.setMuted(false); audioSetMuted(false); ensureMusic(); }
+    button.enable(true);
+    $('stage').style.pointerEvents = '';
+    if (AD.pausedLoop) { AD.pausedLoop = false; loop.resume('ad'); }
+  }
+  function PokiAdapter() {
+    var playing = false;
+    function sdk() { var s = window.PokiSDK; return s && typeof s.commercialBreak === 'function' && typeof s.rewardedBreak === 'function' ? s : null; }
+    function canBreak() { return S.mode !== 'play' && !AD.active; }
+    function run(call, onDone) {
+      adBegin();
+      var p;
+      try { p = call(); } catch (e) { adEnd(); return Promise.resolve(false); }
+      return Promise.resolve(p).then(function (v) { adEnd(); return onDone(v); }, function () { adEnd(); return false; });
+    }
+    return {
+      name: 'poki',
+      init: function () { },
+      rewarded: function () {
+        var s = sdk();
+        if (!s || !canBreak()) return Promise.resolve(false);
+        return run(function () { return s.rewardedBreak(function () { adBegin(); }); }, function (ok) { return ok === true; });
+      },
+      interstitial: function () {
+        var s = sdk();
+        if (!s || !canBreak()) return Promise.resolve(false);
+        return run(function () { return s.commercialBreak(function () { adBegin(); }); }, function () { return true; });
+      },
+      gameplayStart: function () { var s = sdk(); if (!s || playing || AD.active) return; playing = true; try { s.gameplayStart(); } catch (e) { } },
+      gameplayStop: function () { var s = sdk(); if (!s || !playing) return; playing = false; try { s.gameplayStop(); } catch (e) { } },
+      loadingStart: function () { },
+      loadingStop: function () { var s = sdk(); if (s && typeof s.gameLoadingFinished === 'function') { try { s.gameLoadingFinished(); } catch (e) { } } },
+      playing: function () { return playing; }
+    };
+  }
+  var pokiAdapter = null;
+  function pokiActive() { return !!pokiAdapter && Ads.adapter() === pokiAdapter; }
+  function pokiActivate() {
+    var s = window.PokiSDK;
+    if (!s || typeof s.init !== 'function') return;     /* script blocked or absent : Stub stays, the game is playable without ads */
+    if (location.hash.indexOf('pokidebug') >= 0 && typeof s.setDebug === 'function') { try { s.setDebug(true); } catch (e) { } }
+    var done = false;
+    function ready() {
+      if (done) return; done = true;
+      pokiAdapter = PokiAdapter();
+      Ads.configure({ caps: { interstitialGapMs: 0 } });
+      Ads.setAdapter(pokiAdapter);
+      Ads.loadingStop();                                  /* PokiSDK.gameLoadingFinished() */
+      if (S.mode === 'play') Ads.gameplayStart();          /* the player did not wait for init : sync the state */
+      T('custom', { name: 'poki_sdk_ready' });
+    }
+    function fail() { done = true; }
+    var timer = setTimeout(fail, POKI_INIT_TIMEOUT_MS);
+    var p;
+    try { p = s.init(); } catch (e) { clearTimeout(timer); fail(); return; }
+    Promise.resolve(p).then(function () { clearTimeout(timer); ready(); }, function () { clearTimeout(timer); fail(); });
+    /* Poki page jump : the game is embedded in a scrollable page ; the core already cancels Space / ArrowUp, add ArrowDown */
+    window.addEventListener('keydown', function (ev) { if (ev.key === 'ArrowDown') ev.preventDefault(); });
+  }
+
   /* =================== 4. state + simulation (deterministic, fixed step) =================== */
   var S = {
     mode: 'title', world: 1, level: 1, lvl: null, daily: false, dailyOfficial: false, dailyDate: null,
@@ -2140,9 +2235,15 @@
     Ads.gameplayStart();
     ui();
   }
-  function retry() { if (S.daily) startDaily(); else if (S.custom) loadLine(S.lvl.def.line, S.lvl.def.bpm); else startLevel(S.level); }
-  function toMenu() { S.mode = 'menu'; S.daily = false; setMusicTempo(TITLE_MUSIC_BPM); ui(); }
-  function toTitle() { S.mode = 'title'; S.daily = false; setMusicTempo(TITLE_MUSIC_BPM); ui(); }
+  /* retry : Poki order "death and restart = gameplayStop -> commercialBreak -> gameplayStart" ; with the Stub (dev, generic portal
+     build) the restart stays synchronous, as before */
+  function retry() {
+    if (AD.active) return;
+    var go = function () { if (S.daily) startDaily(); else if (S.custom) loadLine(S.lvl.def.line, S.lvl.def.bpm); else startLevel(S.level); };
+    if (pokiActive() && S.mode !== 'play') Ads.request('interstitial').then(go); else go();
+  }
+  function toMenu() { if (S.mode === 'play') Ads.gameplayStop(); S.mode = 'menu'; S.daily = false; setMusicTempo(TITLE_MUSIC_BPM); ui(); }
+  function toTitle() { if (S.mode === 'play') Ads.gameplayStop(); S.mode = 'title'; S.daily = false; setMusicTempo(TITLE_MUSIC_BPM); ui(); }
   function clickPlay() { audio.unlock(); ensureMusic(); sfx('click'); startLevel(nextLevelNumber()); }
   function progressPct() { return S.lvl ? Math.max(0, Math.min(1, S.beat / S.lvl.length)) : 0; }
   function levelLabel() { return S.daily ? 'daily' : (S.custom ? 'test' : S.level); }
@@ -2703,6 +2804,16 @@
     if (playing && S.introT > 0) drawIntroCard(W, H);
     $('bar').firstChild.style.width = Math.round(progressPct() * 100) + '%';
     updateSurgeBar();
+    updateHudCoins();
+  }
+  /* HUD coin counter refreshed on every pickup (was only refreshed by ui() at level start/death/win) */
+  var hudCoinsShown = '';
+  function updateHudCoins() {
+    if (!S.lvl) return;
+    var key = S.runCoins + '/' + S.lvl.coinsTotal + '|' + economy.coins();
+    if (key === hudCoinsShown) return; hudCoinsShown = key;
+    $('hudCoins').textContent = '\u25cf ' + S.runCoins + '/' + S.lvl.coinsTotal;
+    $('hudTotal').textContent = economy.coins() + ' coins';
   }
   function diffStars(d) { var s = ''; for (var i = 1; i <= 5; i++) s += i <= d ? '\u2605' : '\u2606'; return s; }
   function drawIntroCard(W, H) {
@@ -3200,7 +3311,7 @@
       $('deadCause').innerHTML = deathExplanation(S.cause);
       show('btnContinue', !S.daily && progressPct() >= CONTINUE_MIN_PROGRESS && Ads.canRequest('continue'));
       show('btnSkip', !S.daily && S.failStreak >= SKIP_AFTER_FAILS && Ads.canRequest('skip'));
-      $('btnContinue').disabled = false; $('btnContinue').textContent = 'Continue (ad)';
+      $('btnContinue').disabled = false; $('btnContinue').innerHTML = adLabel('Continue (ad)');
     }
     if (m === 'won' || m === 'dailyover') renderWin();
     var snd = audio.muted() ? 'Sound: off' : 'Sound: on';
@@ -3290,7 +3401,7 @@
       var act;
       if (it.owned) act = shop.equipped() === it.id ? '<button disabled>Equipped</button>' : '<button class="pri" data-equip="' + it.id + '">Equip</button>';
       else if (it.unlock.type === 'coins') act = '<button data-buy="' + it.id + '"' + (economy.canAfford(it.unlock.value) ? ' class="pri"' : ' disabled') + '>' + it.unlock.value + ' coins</button>';
-      else if (it.unlock.type === 'ad') act = '<button data-ad="' + it.id + '"' + (Ads.canRequest('skin') ? '' : ' disabled') + '>Watch ad</button>';
+      else if (it.unlock.type === 'ad') act = '<button data-ad="' + it.id + '"' + (Ads.canRequest('skin') ? '' : ' disabled') + '>' + adLabel('Watch ad') + '</button>';
       else act = '<button disabled>' + Math.round(shop.progressOf(it.id) * 100) + '%</button>';
       html += '<div class="card"><i class="sw" style="background:' + it.data.body + ';border-color:' + (it.data.outline || it.data.trail) + '"></i><div class="lbl">' + it.label + '<small>' + it.data.desc + '</small></div>' + act + '</div>';
     });
@@ -3339,13 +3450,15 @@
   $('btnDeadMenu').onclick = function () { sfx('click'); toMenu(); };
   $('btnWinMenu').onclick = function () { sfx('click'); toMenu(); };
   $('btnReplay').onclick = function () { sfx('click'); retry(); };
-  $('btnNext').onclick = function () {
-    sfx('click');
+  /* next level (button or tap on the win screen) : interstitial opportunity BEFORE the level (Poki : gameplayStop -> commercialBreak
+     -> gameplayStart) ; the level starts whatever the ad result */
+  function nextLevel() {
     var nx = S.lastResult && S.lastResult.next;
-    if (!nx) return;
+    if (!nx || AD.active || S.mode !== 'won') return;
     var b = $('btnNext'); b.disabled = true;
-    Ads.request('interstitial').then(function () { b.disabled = false; startLevel(nx.level); });
-  };
+    Ads.request('interstitial').then(function () { b.disabled = false; if (S.mode === 'won') startLevel(nx.level); });
+  }
+  $('btnNext').onclick = function () { sfx('click'); nextLevel(); };
   $('btnContinue').onclick = function () {
     var b = $('btnContinue'); b.disabled = true; b.textContent = 'Loading\u2026';
     Ads.request('continue').then(function (r) {
@@ -3376,7 +3489,7 @@
     audio.unlock();
     if (S.mode === 'play' && S.introT > 0) { S.introT = 0; button.release(); return; }   /* skip the intro card (14.4) ; the tap is not a hold */
     if (S.mode === 'dead') { if (Date.now() - S.deadAt >= DEAD_TAP_S * 1000) retry(); }
-    else if (S.mode === 'won') { if (S.daily) toMenu(); else if (S.lastResult && S.lastResult.next) startLevel(S.lastResult.next.level); else toMenu(); }
+    else if (S.mode === 'won') { if (S.daily) toMenu(); else if (S.lastResult && S.lastResult.next) nextLevel(); else toMenu(); }
   });
   /* SURGE triggers (13.1) : swipe up on the canvas (detected here, the core is untouched), Shift / ArrowUp, and the round button.
      Swipe : the touch starts a hold as usual ; if the finger rises >= 40 px within 300 ms -> cancel the hold (release) and fire. */
@@ -3407,11 +3520,17 @@
     }
   });
 
-  var loop = GC.Loop.create({ update: update, render: render });
+  /* tab hidden / window blur while playing = a pause for Poki (gameplayStop, then gameplayStart when the tab is back) ;
+     the 'test' (hook) and 'ad' (ad gate) pauses are not gameplay interruptions of that kind */
+  function loopPauseWhy(why) { return why !== 'test' && why !== 'ad'; }
+  var loop = GC.Loop.create({ update: update, render: render,
+    onPause: function (why) { if (loopPauseWhy(why) && S.mode === 'play') Ads.gameplayStop(); },
+    onResume: function (why) { if (loopPauseWhy(why) && S.mode === 'play') Ads.gameplayStart(); } });
   vp.onChange(function () { render(0, 0); });
   S.mode = 'title';
   ui();
   loop.start();
+  if (window.HR_PORTAL === 'poki') pokiActivate();
 
   /* =================== 7. test hook =================== */
   if (TEST) {
@@ -3466,6 +3585,8 @@
       },
       die: function (cause) { die(cause || 'wall', null); },
       win: win, retry: retry, toMenu: toMenu, ui: ui,
+      /* Poki SDK (portal build) : ad gate + adapter state ; adapter is 'stub' unless HR_PORTAL === 'poki' and PokiSDK.init() resolved */
+      adState: function () { return { active: AD.active, prevMuted: AD.prevMuted, pausedLoop: AD.pausedLoop, adapter: Ads.adapter() ? Ads.adapter().name : null, poki: pokiActive(), pokiPlaying: pokiAdapter ? pokiAdapter.playing() : null, portal: window.HR_PORTAL || null }; },
       telemetryQueue: function () { return GC.Telemetry && GC.Telemetry.__test__ ? GC.Telemetry.__test__.queue() : []; },
       flushTelemetry: function () { if (GC.Telemetry && GC.Telemetry.flush) GC.Telemetry.flush(); }
     };
