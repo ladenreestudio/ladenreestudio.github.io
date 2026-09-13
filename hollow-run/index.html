@@ -1,0 +1,442 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hollow Run — play in your browser · La Denrée Studio</title>
+<meta name="description" content="Hollow Run: one-button rhythm runner. Hold to turn into a ghost and pass magenta walls, release to stay solid, dodge cyan fields and collect coins. 12 levels + Daily Line. Play free in your browser.">
+<meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#0B1020">
+<link rel="canonical" href="https://ladenreestudio.github.io/hollow-run/">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="La Denrée Studio">
+<meta property="og:title" content="Hollow Run — Hold to become a ghost. Release to grab the coins.">
+<meta property="og:description" content="One-button rhythm runner: hold to turn into a ghost and pass magenta walls, release to stay solid, dodge cyan fields and collect coins. 12 levels + Daily Line. Play free in your browser.">
+<meta property="og:url" content="https://ladenreestudio.github.io/hollow-run/">
+<meta property="og:image" content="https://ladenreestudio.github.io/hollow-run/assets/og-cover.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Hollow Run cover: a cyan ghost running along a neon circuit rail through magenta walls, golden coins bursting out">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Hollow Run — one-button rhythm runner">
+<meta name="twitter:description" content="Hold to become a ghost. Release to grab the coins. Play free in your browser.">
+<meta name="twitter:image" content="https://ladenreestudio.github.io/hollow-run/assets/og-cover.png">
+<link rel="icon" type="image/png" sizes="64x64" href="../assets/favicon.png">
+<link rel="apple-touch-icon" href="../assets/logo-mark.png">
+<style>
+  :root {
+    --bg: #0B1020;
+    --bg-2: #0F1630;
+    --cyan: #00F0FF;
+    --magenta: #FF2D95;
+    --yellow: #FFD60A;
+    --indigo: #3D5AFE;
+    --ui: #E8F1FF;
+    --muted: #9AA8C7;
+    --line: rgba(61, 90, 254, 0.28);
+    --radius: 14px;
+    --max: 1040px;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ui);
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, Ubuntu, Cantarell, "Helvetica Neue", Arial, sans-serif;
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+  #circuit {
+    position: fixed; inset: 0; z-index: 0;
+    width: 100%; height: 100%;
+    pointer-events: none;
+  }
+  .page { position: relative; z-index: 1; }
+  a { color: var(--cyan); text-decoration: none; }
+  a:hover, a:focus-visible { text-decoration: underline; }
+  :focus-visible { outline: 2px solid var(--yellow); outline-offset: 3px; }
+  .wrap { max-width: var(--max); margin: 0 auto; padding: 0 20px; }
+
+  /* Header */
+  header.top {
+    display: flex; align-items: center; justify-content: space-between; gap: 16px;
+    padding: 18px 0;
+  }
+  .brand { display: flex; align-items: center; gap: 12px; color: var(--ui); }
+  .brand img { height: 44px; width: auto; display: block; }
+  .brand .name { font-weight: 700; font-size: 1.15rem; letter-spacing: 0.01em; }
+  .brand .name .accent { color: var(--cyan); text-shadow: 0 0 10px rgba(0, 240, 255, 0.7); }
+  nav.menu { display: flex; gap: 18px; font-size: 0.95rem; }
+  nav.menu a { color: var(--muted); }
+  nav.menu a:hover { color: var(--ui); }
+
+  /* Hero */
+  .hero { padding: 40px 0 24px; text-align: center; }
+  .hero .kicker { display: inline-block; font-size: 0.72rem; letter-spacing: 0.18em; text-transform: uppercase;
+    color: var(--magenta); font-weight: 700; margin-bottom: 10px; }
+  .hero h1 {
+    font-size: clamp(2.2rem, 6vw, 3.6rem);
+    line-height: 1.08; margin: 0 0 10px; font-weight: 800; letter-spacing: 0.06em;
+    color: var(--cyan); text-shadow: 0 0 18px rgba(0, 240, 255, 0.55);
+  }
+  .hero .sub { color: var(--ui); font-size: clamp(1.05rem, 2.2vw, 1.3rem); margin: 0 auto 22px; max-width: 640px; }
+  .hero .cover { max-width: 860px; margin: 0 auto; border-radius: 12px; overflow: hidden;
+    border: 1px solid rgba(0, 240, 255, 0.25); box-shadow: 0 16px 50px rgba(0, 0, 0, 0.45); }
+  .hero .cover img { width: 100%; height: auto; display: block; }
+  .hero .flag { display: inline-block; margin-top: 18px; padding: 6px 12px; border: 1px solid var(--line);
+    border-radius: 999px; color: var(--muted); font-size: 0.85rem; }
+
+  /* Sections */
+  section { padding: 36px 0; }
+  h2 { font-size: clamp(1.4rem, 3vw, 1.9rem); margin: 0 0 18px; }
+  h2 .tag { display: inline-block; font-size: 0.7rem; letter-spacing: 0.18em; text-transform: uppercase;
+    color: var(--magenta); margin-right: 10px; vertical-align: middle; font-weight: 700; }
+  .card {
+    background: linear-gradient(180deg, rgba(15, 22, 48, 0.92), rgba(11, 16, 32, 0.92));
+    border: 1px solid var(--line); border-radius: var(--radius);
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.35);
+  }
+  .btns { display: flex; flex-wrap: wrap; gap: 12px; }
+  .btn {
+    display: inline-flex; align-items: center; gap: 8px; padding: 12px 20px; border-radius: 10px;
+    font-weight: 700; font-size: 0.98rem; border: 1px solid transparent; transition: transform .12s ease, box-shadow .12s ease;
+  }
+  .btn:hover { text-decoration: none; transform: translateY(-1px); }
+  .btn.primary { background: var(--cyan); color: #04101a; box-shadow: 0 0 22px rgba(0, 240, 255, 0.35); }
+  .btn.primary:hover { box-shadow: 0 0 30px rgba(0, 240, 255, 0.55); }
+  .btn.ghost { color: var(--ui); border-color: rgba(232, 241, 255, 0.35); background: rgba(232, 241, 255, 0.04); }
+  .btn.ghost:hover { border-color: var(--magenta); color: #fff; box-shadow: 0 0 18px rgba(255, 45, 149, 0.35); }
+  .btn svg { width: 18px; height: 18px; fill: currentColor; }
+
+  /* Play now */
+  .play-card { padding: 14px; }
+  .frame {
+    position: relative; width: 100%; aspect-ratio: 16 / 9;
+    border-radius: 10px; overflow: hidden; background: #060a16;
+    border: 1px solid rgba(0, 240, 255, 0.25);
+    box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.4), 0 10px 40px rgba(0, 0, 0, 0.45);
+  }
+  .frame iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; display: block; background: #060a16; }
+  .play-bar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px 18px; margin-top: 14px; }
+  .play-bar .note { color: var(--muted); font-size: 0.92rem; margin: 0; }
+  .play-bar .note b { color: var(--ui); font-weight: 600; }
+  .controls { margin: 14px 0 0; padding: 0; list-style: none; display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px 16px;
+    color: var(--muted); font-size: 0.92rem; }
+  .controls li b { color: var(--ui); }
+  kbd { display: inline-block; padding: 1px 7px; border-radius: 6px; border: 1px solid rgba(232, 241, 255, 0.3);
+    background: rgba(232, 241, 255, 0.06); color: var(--ui); font: 600 0.82em system-ui, sans-serif; }
+
+  /* How to play */
+  .rules { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+  .rule { padding: 20px; display: flex; flex-direction: column; gap: 12px; }
+  .rule .ico { width: 52px; height: 52px; display: grid; place-items: center; border-radius: 12px;
+    background: rgba(232, 241, 255, 0.05); border: 1px solid var(--line); }
+  .rule .ico svg { width: 34px; height: 34px; display: block; }
+  .rule.r-hold .ico { border-color: rgba(255, 45, 149, 0.55); box-shadow: 0 0 18px rgba(255, 45, 149, 0.25); }
+  .rule.r-release .ico { border-color: rgba(255, 214, 10, 0.55); box-shadow: 0 0 18px rgba(255, 214, 10, 0.22); }
+  .rule.r-field .ico { border-color: rgba(0, 240, 255, 0.55); box-shadow: 0 0 18px rgba(0, 240, 255, 0.25); }
+  .rule h3 { margin: 0; font-size: 1.15rem; }
+  .rule h3 .act { color: var(--cyan); letter-spacing: 0.04em; }
+  .rule h3 .arrow { color: var(--muted); font-weight: 400; margin: 0 6px; }
+  .rule p { margin: 0; color: var(--muted); }
+  .pink { color: var(--magenta); font-weight: 700; }
+  .gold { color: var(--yellow); font-weight: 700; }
+  .cyan { color: var(--cyan); font-weight: 700; }
+  .rule .wall { display: inline-block; width: 12px; height: 22px; background: var(--magenta); border-radius: 2px;
+    box-shadow: 0 0 10px rgba(255, 45, 149, 0.8); vertical-align: -5px; margin-right: 6px; }
+  .rule .coin { display: inline-block; width: 14px; height: 14px; border-radius: 50%; background: var(--yellow);
+    box-shadow: 0 0 10px rgba(255, 214, 10, 0.8); vertical-align: -2px; margin-right: 6px; }
+  .rule .field { display: inline-block; width: 22px; height: 14px; border-radius: 3px; background: rgba(0, 240, 255, 0.25);
+    border: 1px solid var(--cyan); box-shadow: 0 0 10px rgba(0, 240, 255, 0.6); vertical-align: -2px; margin-right: 6px; }
+
+  /* Features */
+  .features { padding: 22px; }
+  .features p { margin: 0 0 14px; }
+  .features ul { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+  .features li { border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; color: var(--muted); font-size: 0.92rem; }
+  .features li b { display: block; color: var(--ui); margin-bottom: 2px; }
+  .features li b.c { color: var(--cyan); }
+  .features li b.m { color: var(--magenta); }
+  .features li b.y { color: var(--yellow); }
+
+  /* Screenshots */
+  .gallery { display: grid; grid-template-columns: 1.6fr 1fr 1fr 1fr; gap: 14px; align-items: stretch; }
+  .gallery figure { margin: 0; border-radius: 10px; overflow: hidden; border: 1px solid var(--line);
+    background: #060a16; display: flex; flex-direction: column; }
+  .gallery figure img { width: 100%; height: 100%; object-fit: cover; display: block; flex: 1; }
+  .gallery figcaption { padding: 8px 12px; color: var(--muted); font-size: 0.85rem; border-top: 1px solid var(--line); }
+  .gallery .wide img { aspect-ratio: 16 / 9; }
+  .gallery .tall img { aspect-ratio: 9 / 16; max-height: 420px; }
+
+  /* Links */
+  .links { padding: 22px; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px; }
+  .links p { margin: 0; color: var(--muted); }
+
+  /* Footer */
+  footer { padding: 34px 0 44px; color: var(--muted); font-size: 0.92rem; border-top: 1px solid var(--line); margin-top: 24px; }
+  footer .cols { display: flex; flex-wrap: wrap; gap: 18px 36px; justify-content: space-between; align-items: flex-start; }
+  footer ul { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 8px 18px; }
+  footer a { color: var(--muted); }
+  footer a:hover { color: var(--cyan); }
+  footer .mark { display: flex; align-items: center; gap: 10px; }
+  footer .mark img { width: 30px; height: 30px; }
+  footer .legal { margin-top: 18px; display: flex; flex-wrap: wrap; gap: 8px 18px; }
+
+  @media (max-width: 760px) {
+    nav.menu { display: none; }
+    .hero { padding: 26px 0 16px; }
+    .rules, .features ul { grid-template-columns: 1fr; }
+    .gallery { grid-template-columns: 1fr 1fr; }
+    .gallery .wide { grid-column: 1 / -1; }
+    .gallery .tall img { max-height: none; }
+    .controls { grid-template-columns: 1fr; }
+    .btn { width: 100%; justify-content: center; }
+    .play-card { padding: 10px; }
+  }
+  /* Portrait phones: the game is portrait-first, give it the height it needs */
+  @media (max-width: 760px) and (orientation: portrait) {
+    .frame { aspect-ratio: auto; height: 80vh; height: 80svh; min-height: 480px; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    html { scroll-behavior: auto; }
+    .btn { transition: none; }
+  }
+</style>
+</head>
+<body>
+<canvas id="circuit" aria-hidden="true"></canvas>
+
+<div class="page">
+  <div class="wrap">
+    <header class="top">
+      <a class="brand" href="../" aria-label="La Denrée Studio — home">
+        <img src="../assets/logo-mark.png" alt="" width="44" height="44">
+        <span class="name">La Denr<span class="accent">é</span>e Studio</span>
+      </a>
+      <nav class="menu" aria-label="Sections">
+        <a href="#play">Play now</a>
+        <a href="#how-to-play">How to play</a>
+        <a href="#features">Features</a>
+        <a href="#screenshots">Screenshots</a>
+        <a href="#links">Links</a>
+      </nav>
+    </header>
+
+    <main id="top">
+      <section class="hero">
+        <span class="kicker">Now playing · free browser game</span>
+        <h1>Hollow Run</h1>
+        <p class="sub">Hold to become a ghost. Release to grab the coins.</p>
+        <div class="cover">
+          <img src="assets/cover.webp" alt="Hollow Run cover: a cyan ghost running along a neon circuit rail, passing through magenta walls while golden coins burst out" width="1280" height="720">
+        </div>
+        <span class="flag">Arcade · Rhythm · One-button · Touch, mouse or keyboard · Portrait &amp; landscape</span>
+      </section>
+
+      <section id="play">
+        <h2><span class="tag">Play now</span>Right here, in your browser</h2>
+        <div class="card play-card">
+          <div class="frame">
+            <iframe id="game" src="play/index.html" title="Hollow Run" allow="fullscreen; autoplay" allowfullscreen loading="eager"></iframe>
+          </div>
+          <div class="play-bar">
+            <p class="note"><b>Best played on mobile in portrait</b> or on desktop with the <kbd>Space</kbd> bar. Sound on for the beat.</p>
+            <a class="btn primary" id="btn-fullscreen" href="play/index.html" target="_blank" rel="noopener">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h6v2H6v4H4V4zm10 0h6v6h-2V6h-4V4zM4 14h2v4h4v2H4v-6zm14 0h2v6h-6v-2h4v-4z"/></svg>
+              Open full screen
+            </a>
+          </div>
+          <ul class="controls">
+            <li><b>Desktop:</b> hold <kbd>Space</kbd>, <kbd>Enter</kbd>, <kbd>&uarr;</kbd>, <kbd>W</kbd> / <kbd>Z</kbd> or the left mouse button to become a ghost; release to become solid. <kbd>Shift</kbd> fires the Surge.</li>
+            <li><b>Mobile:</b> touch and hold anywhere to become a ghost; release to become solid. Swipe up (or tap the round SURGE button) when the gauge is full.</li>
+          </ul>
+        </div>
+      </section>
+
+      <section id="how-to-play">
+        <h2><span class="tag">How to play</span>Three rules, one button</h2>
+        <div class="rules">
+          <div class="card rule r-hold">
+            <div class="ico" aria-hidden="true">
+              <svg viewBox="0 0 26 26"><ellipse cx="13" cy="21" rx="9" ry="3" fill="none" stroke="#E8F1FF" stroke-width="2"/><ellipse cx="13" cy="21" rx="9" ry="3" fill="#E8F1FF" opacity=".4"/><path d="M13 19 V6 M15 10 L20 12 V4" fill="none" stroke="#E8F1FF" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/><circle cx="13" cy="19" r="2.4" fill="#E8F1FF"/></svg>
+            </div>
+            <h3><span class="act">HOLD</span><span class="arrow">&rarr;</span>ghost</h3>
+            <p><span class="wall"></span>Turn translucent and pass straight through the <span class="pink">pink walls</span>. Your ghost gauge lasts 2.5 seconds, so every hold is a decision.</p>
+          </div>
+          <div class="card rule r-release">
+            <div class="ico" aria-hidden="true">
+              <svg viewBox="0 0 26 26"><ellipse cx="13" cy="22" rx="9" ry="3" fill="none" stroke="#E8F1FF" stroke-width="2"/><path d="M13 14 V2 M15 6 L20 8 V1" fill="none" stroke="#E8F1FF" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/><circle cx="13" cy="14" r="2.4" fill="#E8F1FF"/><path d="M4 12 V5 M2 7 L4 5 L6 7" fill="none" stroke="#FFD60A" stroke-width="1.8" stroke-linecap="round"/></svg>
+            </div>
+            <h3><span class="act">RELEASE</span><span class="arrow">&rarr;</span>solid</h3>
+            <p><span class="coin"></span>Only a solid runner can collect the <span class="gold">golden coins</span>. Switch at the very last beat for a PERFECT and your next coin arc counts double.</p>
+          </div>
+          <div class="card rule r-field">
+            <div class="ico" aria-hidden="true">
+              <svg viewBox="0 0 26 26"><rect x="2" y="3" width="22" height="20" rx="3" fill="rgba(0,240,255,.25)" stroke="#00F0FF" stroke-width="1.5"/><path d="M14 4 L9 13 H14 L11 22 L18 11 H13 L16 4Z" fill="#E8F1FF"/></svg>
+            </div>
+            <h3><span class="cyan">Cyan fields</span> hurt ghosts</h3>
+            <p><span class="field"></span>The crackling <span class="cyan">cyan fields</span> only hurt ghosts: stay solid to cross them. Hit a wall while solid, or a field while ghost, and you retry instantly.</p>
+          </div>
+        </div>
+      </section>
+
+      <section id="features">
+        <h2><span class="tag">Features</span>Small game, precious details</h2>
+        <div class="card features">
+          <p>Hollow Run is a one-button rhythm runner. Your little cyan ghost runs along a glowing circuit rail at a tempo that rises level after level. Twelve hand-tuned lines, a fresh seeded Daily Line every day, PERFECT timing and the SURGE super-power. Short sessions, instant retry: easy to learn, hard to perfect.</p>
+          <ul>
+            <li><b class="c">12 levels, rising tempo</b>From 120 to 168 BPM, three stars each, difficulty dots on the map, checkpoints.</li>
+            <li><b class="y">PERFECT timing</b>Switch state in the last 0.10 s: your next coin arc counts x2 and the Surge gauge fills faster.</li>
+            <li><b class="m">SURGE super-power</b>Swipe up or press Shift when the gauge is full: smash through everything, magnetise the coins.</li>
+            <li><b>Ghost coins &amp; batteries</b>Coins you can only grab while phased, batteries that refill your ghost gauge.</li>
+            <li><b>Late walls &amp; doors</b>Walls that appear on the last beat, alternating doors and long wall chains to test your timing.</li>
+            <li><b class="c">Daily Line</b>A new seeded line every day, local ranking, streak counter and a daily chest.</li>
+            <li><b class="y">6 skins</b>Unlock new looks with coins, stars and your daily streak.</li>
+            <li><b>Gentle tutorial</b>The world slows down the first time you meet each new element. Explicit death messages, instant retry.</li>
+            <li><b>Offline, no account</b>Runs in the browser, portrait and landscape, touch / mouse / keyboard. Saves locally, no data collected.</li>
+          </ul>
+        </div>
+      </section>
+
+      <section id="screenshots">
+        <h2><span class="tag">Screenshots</span>On the line</h2>
+        <div class="gallery">
+          <figure class="wide">
+            <img src="assets/shot-landscape.webp" alt="Hollow Run in landscape: a violet ghost phasing through a tall magenta wall chain on level 5" width="1280" height="720" loading="lazy">
+            <figcaption>Level 5 · a wall chain, landscape mode</figcaption>
+          </figure>
+          <figure class="tall">
+            <img src="assets/shot-title.webp" alt="Hollow Run title screen with the animated demo, the three rules and the big PLAY button" width="780" height="1600" loading="lazy">
+            <figcaption>Title screen and demo</figcaption>
+          </figure>
+          <figure class="tall">
+            <img src="assets/shot-surge.webp" alt="SURGE active: the ghost blazes through the level while the screen turns violet" width="411" height="750" loading="lazy">
+            <figcaption>SURGE! · level 8</figcaption>
+          </figure>
+          <figure class="tall">
+            <img src="assets/shot-late-wall.webp" alt="A late wall fading in at the last beat in front of the cyan ghost on level 9" width="411" height="750" loading="lazy">
+            <figcaption>Late wall · level 9</figcaption>
+          </figure>
+        </div>
+      </section>
+
+      <section id="links">
+        <h2><span class="tag">Links</span>Elsewhere</h2>
+        <div class="card links">
+          <p>Prefer a portal, or want to follow the studio? Hollow Run is also on itch.io, and new lines show up on YouTube.</p>
+          <div class="btns">
+            <a class="btn primary" id="btn-itch" href="https://ladenreestudio.itch.io/hollow-run" rel="noopener">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>
+              Play on itch.io
+            </a>
+            <a class="btn ghost" id="btn-youtube" href="https://www.youtube.com/@ladenreestudio" rel="noopener">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21.6 7.2a2.5 2.5 0 0 0-1.8-1.8C18.2 5 12 5 12 5s-6.2 0-7.8.4A2.5 2.5 0 0 0 2.4 7.2 26 26 0 0 0 2 12a26 26 0 0 0 .4 4.8 2.5 2.5 0 0 0 1.8 1.8C5.8 19 12 19 12 19s6.2 0 7.8-.4a2.5 2.5 0 0 0 1.8-1.8A26 26 0 0 0 22 12a26 26 0 0 0-.4-4.8zM10 15V9l5.2 3z"/></svg>
+              YouTube
+            </a>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer id="contact">
+      <div class="cols">
+        <div class="mark">
+          <img src="../assets/logo-mark.png" alt="" width="30" height="30">
+          <span>La Denrée Studio · <a id="link-mail" href="mailto:ladenree.studio@gmail.com">ladenree.studio@gmail.com</a></span>
+        </div>
+        <ul>
+          <li><a id="link-home" href="../">Home</a></li>
+          <li><a id="link-itch" href="https://ladenreestudio.itch.io" rel="noopener">itch.io</a></li>
+          <li><a id="link-youtube" href="https://www.youtube.com/@ladenreestudio" rel="noopener">YouTube</a></li>
+          <li><a id="link-github" href="https://github.com/ladenreestudio" rel="noopener">GitHub</a></li>
+        </ul>
+      </div>
+      <div class="legal">
+        <span>© 2026 La Denrée Studio</span>
+        <a id="link-privacy" href="../privacy.html">Privacy</a>
+        <span>No cookies, no trackers, no data collected. The game saves your progress locally on your device.</span>
+      </div>
+    </footer>
+  </div>
+</div>
+
+<script>
+/* Discreet printed-circuit backdrop. Drawn once (and on resize), no animation loop,
+   no external requests. Respects prefers-reduced-motion by design (static). */
+(function () {
+  var canvas = document.getElementById('circuit');
+  if (!canvas || !canvas.getContext) return;
+  var ctx = canvas.getContext('2d');
+
+  function seeded(seed) {
+    var s = seed >>> 0;
+    return function () { s = (s * 1664525 + 1013904223) >>> 0; return s / 4294967296; };
+  }
+
+  function draw() {
+    var dpr = Math.min(window.devicePixelRatio || 1, 2);
+    var w = window.innerWidth, h = window.innerHeight;
+    canvas.width = Math.floor(w * dpr);
+    canvas.height = Math.floor(h * dpr);
+    canvas.style.width = w + 'px';
+    canvas.style.height = h + 'px';
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, w, h);
+
+    var rnd = seeded(20260913);
+    var step = Math.max(22, Math.round(Math.min(w, h) / 28));
+    var traces = Math.round((w * h) / 42000);
+    ctx.lineWidth = 1.2;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+
+    for (var i = 0; i < traces; i++) {
+      var x = Math.round(rnd() * (w / step)) * step;
+      var y = Math.round(rnd() * (h / step)) * step;
+      var segs = 2 + Math.floor(rnd() * 4);
+      var alpha = 0.10 + rnd() * 0.16;
+      ctx.strokeStyle = 'rgba(61, 90, 254, ' + alpha.toFixed(3) + ')';
+      ctx.beginPath();
+      ctx.moveTo(x, y);
+      for (var k = 0; k < segs; k++) {
+        var dir = rnd();
+        var len = step * (1 + Math.floor(rnd() * 3));
+        if (dir < 0.4) x += len;
+        else if (dir < 0.7) y += len;
+        else if (dir < 0.85) { x += len; y += len; }
+        else { x -= len; y += len; }
+        ctx.lineTo(x, y);
+      }
+      ctx.stroke();
+      // via (pad) at the end of the trace
+      ctx.fillStyle = 'rgba(61, 90, 254, ' + Math.min(0.6, alpha + 0.22).toFixed(3) + ')';
+      ctx.beginPath();
+      ctx.arc(x, y, 2.4, 0, Math.PI * 2);
+      ctx.fill();
+      // a few glowing cyan / magenta vias
+      if (rnd() < 0.10) {
+        var glow = rnd() < 0.5 ? '0, 240, 255' : '255, 45, 149';
+        ctx.fillStyle = 'rgba(' + glow + ', 0.55)';
+        ctx.shadowColor = 'rgba(' + glow + ', 0.9)';
+        ctx.shadowBlur = 10;
+        ctx.beginPath();
+        ctx.arc(x, y, 2.2, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.shadowBlur = 0;
+      }
+    }
+  }
+
+  var t = null;
+  window.addEventListener('resize', function () {
+    clearTimeout(t);
+    t = setTimeout(draw, 120);
+  });
+  draw();
+})();
+</script>
+</body>
+</html>
