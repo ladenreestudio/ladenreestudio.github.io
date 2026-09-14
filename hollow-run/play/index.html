@@ -1781,32 +1781,83 @@
   var WORLD_LEVELS = 12;
   /* tutorial (12.2) */
   var TUT_SLOW = 0.2, TUT_SLOW_COINS = 0.5, TUT_CRAWL = 0.05, TUT_LOOKAHEAD = 2;
-  /* generative music (15) : the line is the score. Tonic = hash of the line (12 possible) or the Daily seed ; chord progression per
-     WORLD, one chord per 4-beat measure ; every layer is a plan of events {beat, layer, freqs, dur (beats), gain} compiled with the
-     level (compileMusic) and scheduled by musicTick() through ONE bus -> DynamicsCompressor -> gain 0.8 -> AUD.master. Gains stay
-     under the cues (wall 0.16) : pad 0.05, bass 0.09, lead 0.06, kick 0.06, hat 0.025, snare 0.04. The title screen only gets a slow
-     pad (80 BPM) after the first gesture. The socle's ambient arpeggio (audio.music) is no longer used. */
+  /* generative music (15, 16) : the line is the score. Tonic = hash of the line (12 possible) or the Daily seed ; one MODE and one
+     chord progression per LEVEL (LEVEL_MUSIC, 16.1), one chord per 4-beat measure ; every layer is a plan of events {beat, layer,
+     freqs, dur (beats), gain} compiled with the level (compileMusic) and scheduled by musicTick() through ONE bus ->
+     DynamicsCompressor -> gain 0.8 -> AUD.master. Gains stay under the cues (wall 0.16) : pad 0.04, bass 0.10, lead 0.07, hook 0.08,
+     kick 0.06, hat 0.025, snare 0.045. The title screen only gets a slow pad (80 BPM) after the first gesture. The socle's ambient
+     arpeggio (audio.music) is no longer used. */
   var MUSIC_LOG_MAX = 200, MEASURE_B = 4, TITLE_PAD_BPM = 80, MUSIC_OUT_GAIN = 0.8, SURGE_SEMITONES = 3;
   var TONIC_HZ = 110;                                             /* A2 : tonic pitch class t -> 110 * 2^(t/12), then folded per layer */
   var NOTE_NAMES = ['A', 'A#', 'B', 'C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#'];
-  /* world 1 "Abyss" : i - VI - III - VII in minor (Am F C G when the tonic is A) ; roots in semitones from the tonic */
-  var WORLD_CHORDS = { 1: [{ root: 0, minor: true }, { root: 8, minor: false }, { root: 3, minor: false }, { root: 10, minor: false }] };
-  var PENTA_MIN = [0, 3, 5, 7, 10], PENTA_MAJ = [0, 2, 4, 7, 9];
-  /* progression fraction from which each layer is audible (0-25 % pad + rhythm + bass ; 25-60 % + lead ; > 60 % + snare, eighth hats) */
-  var MGATE = { pad: 0, bass: 0, kick: 0, lead: 0.25, arp: 0.25, hat: 0.6, snare: 0.6 };
-  var SNARE_FROM_LEVEL = 6;
+  /* (16) one MODE per level : the scale is the mood. MODES = intervals in semitones from the tonic ; penta = the 5 scale degrees
+     (0-based) used by the lead, the hook and the success melody (1-2-3-5-6 in the major-ish modes and aeolian, 1-3-4-5-7 in the
+     phrygian ones, 1-2-3-5-7 in harmonic minor = 1-2-3-5 + the major 7th). */
+  var MODES = {
+    lydian: { scale: [0, 2, 4, 6, 7, 9, 11], penta: [0, 1, 2, 4, 5], label: 'Lydian' },
+    ionian: { scale: [0, 2, 4, 5, 7, 9, 11], penta: [0, 1, 2, 4, 5], label: 'Ionian' },
+    mixolydian: { scale: [0, 2, 4, 5, 7, 9, 10], penta: [0, 1, 2, 4, 5], label: 'Mixolydian' },
+    dorian: { scale: [0, 2, 3, 5, 7, 9, 10], penta: [0, 1, 2, 4, 5], label: 'Dorian' },
+    aeolian: { scale: [0, 2, 3, 5, 7, 8, 10], penta: [0, 1, 2, 4, 5], label: 'Aeolian' },
+    phrygian: { scale: [0, 1, 3, 5, 7, 8, 10], penta: [0, 2, 3, 4, 6], label: 'Phrygian' },
+    harmonic: { scale: [0, 2, 3, 5, 7, 8, 11], penta: [0, 1, 2, 4, 6], label: 'Harmonic minor' },
+    phrygdom: { scale: [0, 1, 4, 5, 7, 8, 10], penta: [0, 2, 3, 4, 6], label: 'Phrygian dominant' }
+  };
+  /* LEVEL_MUSIC[levelIndex] (0-based) : mode, progression in ROMAN degrees of the mode (upper = major triad, lower = minor, '7' =
+     dominant 7th voiced root-3rd-7th, the 'b' is notation only : the root always comes from the mode), one chord per measure, and
+     the timbre kit (A levels 1-3, B 4-6, C 7-9, D 10-12). Daily : mode by seed among dorian / aeolian / phrygian / mixolydian. */
+  var LEVEL_MUSIC = [
+    { mode: 'lydian', prog: ['I', 'II', 'I', 'II'], kit: 'A' },
+    { mode: 'ionian', prog: ['I', 'IV', 'V', 'I'], kit: 'A' },
+    { mode: 'mixolydian', prog: ['I', 'bVII', 'IV', 'I'], kit: 'A' },
+    { mode: 'dorian', prog: ['i', 'IV', 'i', 'bVII'], kit: 'B' },
+    { mode: 'dorian', prog: ['i', 'bVII', 'IV', 'i'], kit: 'B' },
+    { mode: 'aeolian', prog: ['i', 'VI', 'III', 'VII'], kit: 'B' },
+    { mode: 'aeolian', prog: ['i', 'iv', 'VI', 'V'], kit: 'C' },
+    { mode: 'phrygian', prog: ['i', 'bII', 'i', 'bVII'], kit: 'C' },
+    { mode: 'phrygian', prog: ['i', 'bII', 'bIII', 'bII'], kit: 'C' },
+    { mode: 'harmonic', prog: ['i', 'VI', 'V7', 'i'], kit: 'D' },
+    { mode: 'harmonic', prog: ['i', 'iv', 'V7', 'VI'], kit: 'D' },
+    { mode: 'phrygdom', prog: ['I', 'bII', 'bVII', 'bII'], kit: 'D' }
+  ];
+  var DAILY_MODES = ['dorian', 'aeolian', 'phrygian', 'mixolydian'];
+  var ROMAN = { I: 0, II: 1, III: 2, IV: 3, V: 4, VI: 5, VII: 6 };
+  /* (16.2) timbre kits : pad voice types ('pulse' = 25 % square via PeriodicWave), pad filter / detune (cents), bass type + filter,
+     lead type + optional filter / vibrato (Hz) / sub-octave */
+  var MKIT = {
+    A: { pad: ['triangle', 'sine', 'triangle'], padFilter: 900, detune: 6, bass: 'sine', bassFilter: 320, lead: 'triangle', leadFilter: 0, vib: 0, sub: false },
+    B: { pad: ['sawtooth', 'sawtooth', 'sawtooth'], padFilter: 500, detune: 8, bass: 'square', bassFilter: 260, lead: 'sine', leadFilter: 0, vib: 6, sub: false },
+    C: { pad: ['sine', 'sine', 'sine'], padFilter: 1200, detune: 12, bass: 'triangle', bassFilter: 320, lead: 'square', leadFilter: 1800, vib: 0, sub: false },
+    D: { pad: ['pulse', 'pulse', 'pulse'], padFilter: 700, detune: 7, bass: 'sawtooth', bassFilter: 240, lead: 'triangle', leadFilter: 0, vib: 0, sub: true }
+  };
+  var PULSE_DUTY = 0.25, PULSE_HARMONICS = 24, VIB_CENTS = 10;
+  /* (16.2) hat patterns on the 8 eighths of the measure (index 2k = beat k+1, 2k+1 = its 'and'), picked by the hash of the line */
+  var HAT_PATTERNS = [
+    { name: 'straight', hits: [1, 1, 1, 1, 1, 1, 1, 1] },
+    { name: 'syncope', hits: [1, 0, 1, 1, 0, 1, 1, 0] },
+    { name: 'shuffle', hits: [1, 1, 0, 1, 1, 1, 0, 1] },
+    { name: 'offbeat', hits: [0, 1, 0, 1, 0, 1, 0, 1] },
+    { name: '332', hits: [1, 0, 0, 1, 0, 0, 1, 0] },
+    { name: 'rare', hits: [0, 0, 1, 0, 0, 0, 0, 1] }
+  ];
+  /* progression fraction from which each layer is audible (0-25 % pad + rhythm + bass ; 25-60 % + lead / hook ; > 60 % + snare, hats) */
+  var MGATE = { pad: 0, bass: 0, kick: 0, lead: 0.25, arp: 0.25, hook: 0.25, hat: 0.6, snare: 0.6 };
+  var SNARE_FROM_LEVEL = 4, SNARE_BACKBEAT_FROM_LEVEL = 8, KICK_AND4_FROM_LEVEL = 7, PAD_PULSE_FROM_LEVEL = 4;
+  var PAD_LFO_HZ = 0.1, PAD_LFO_DEPTH = 350, PAD_PULSE_DIP = 0.55, PAD_PULSE_RISE = 0.6;   /* filter LFO (Hz, +/- Hz) ; eighth pulsation : dip to 55 %, back over 60 % of the eighth */
+  var HOOK_EVERY = 4, HOOK_LEN = 8;                                                     /* the hook plays on every 4th measure (4, 8, 12...) */
   var MLAYER = {
-    pad: { gain: 0.05, filter: 900, filterOpen: 4000, attack: 0.25, release: 0.3, detune: 6, dur: MEASURE_B },
-    bass: { type: 'triangle', gain: 0.09, filter: 320, dur: 0.8 },
-    lead: { type: 'triangle', gain: 0.06, dur: 0.5, attack: 0.01 },
+    pad: { gain: 0.04, filter: 900, filterOpen: 4000, attack: 0.25, release: 0.3, detune: 6, dur: MEASURE_B },
+    bass: { type: 'triangle', gain: 0.10, filter: 320, dur: 0.8 },
+    lead: { type: 'triangle', gain: 0.07, dur: 0.5, attack: 0.01 },
+    hook: { type: 'triangle', gain: 0.08, dur: 0.5, attack: 0.01 },
     arp: { type: 'triangle', gain: 0.05, dur: 0.22 },
     kick: { type: 'sine', f0: 140, f1: 45, dur: 0.12, gain: 0.06 },          /* dur in SECONDS for the percussion (converted to beats at compile) */
     hat: { type: 'square', f0: 6000, f1: 4200, dur: 0.02, gain: 0.025 },
-    snare: { noise: true, gain: 0.04, filter: 3200, dur: 0.09 },
+    snare: { noise: true, gain: 0.045, filter: 3200, dur: 0.09 },
     cadence: { gain: 0.07, filter: 2500, attack: 0.05, release: 0.6, dur: 1.5 },
     death: { type: 'sine', f0: 55, f1: 38, dur: 0.6, gain: 0.12 }
   };
-  var MLAYER_ORDER = ['pad', 'bass', 'kick', 'snare', 'hat', 'lead', 'arp'];
+  var MLAYER_ORDER = ['pad', 'bass', 'kick', 'snare', 'hat', 'lead', 'hook', 'arp'];
   /* title demo (12.1) : 14 beats = 7 s loop, positions in beats */
   var DEMO = { len: 14, wall: { x0: 4.2, x1: 4.8 }, coins: 6.6, field: { x0: 10.2, x1: 11.2 }, holdFrom: 2.4, holdTo: 5.3 };
 
@@ -1998,7 +2049,7 @@
   /* music (15) : nothing before the first gesture (audio.unlock() in every button handler) ; ensureMusic() only (re)arms the title
      pad, the level music is driven by the plan (musicTick). Option "Music" (save.music) is separate from "Sound" (GC.Audio mute). */
   function musicOn() { return save.get('music') !== false; }
-  function ensureMusic() { MUS.titleTonic = tonicOf(levelDef(nextLevelNumber())); MUS.titleNext = 0; }
+  function ensureMusic() { var d = levelDef(nextLevelNumber()); MUS.titleTonic = tonicOf(d); MUS.titleMusic = levelMusic(d); MUS.titleNext = 0; }
   function setMusic(v) { save.set('music', !!v); if (!v) musicCut(); else ensureMusic(); ui(); return musicOn(); }
   function toggleMusic() { audio.unlock(); setMusic(!musicOn()); }
   function toggleSound() { audio.unlock(); audio.toggle(); if (audio.muted()) musicCut(); else ensureMusic(); audioSetMuted(audio.muted()); ui(); }
@@ -2135,7 +2186,7 @@
   var AUD = { log: [], master: null, metroBeat: -1, streak: 0 };
   /* music state (15) : compiled plan of the current level, cursor of the next event, log of what was scheduled, bus/compressor nodes,
      live tonal voices (for the Surge glide), PERFECT octave flag, title pad cursor */
-  var MUS = { plan: null, next: 0, log: [], bus: null, comp: null, out: null, live: [], octave: false, lastRatio: 1, titleNext: 0, titleIdx: 0, titleTonic: 0, noise: null };
+  var MUS = { plan: null, next: 0, log: [], bus: null, comp: null, out: null, live: [], octave: false, lastRatio: 1, titleNext: 0, titleIdx: 0, titleTonic: 0, titleMusic: null, noise: null, pulse: null, lfo: null, lfoGain: null };
 
   function levelDef(n) { return LEVELS[Math.max(0, Math.min(LEVELS.length - 1, n - 1))]; }
   function resetRun() {
@@ -2501,7 +2552,7 @@
   }
   function successNoteHz(streak) {
     if (!MUS.plan) return NOTE_BASE * Math.pow(2, PENTA[Math.min(PENTA.length - 1, streak)] / 12);
-    var ch = chordOf(MUS.plan.world, S.beat), sc = chordPenta(ch), k = Math.min(PENTA.length - 1, streak);
+    var sc = MUS.plan.penta, k = Math.min(PENTA.length - 1, streak);          /* (16.1) pentatonic of the level's MODE */
     return pitchHz(MUS.plan.tonic, sc[k % 5] + 12 * Math.floor(k / 5), NOTE_BASE);
   }
 
@@ -2593,17 +2644,66 @@
   }
   function foldHz(f, lo) { while (f < lo) f *= 2; while (f >= lo * 2) f /= 2; return f; }
   function pitchHz(tonic, semi, lo) { return Math.round(foldHz(TONIC_HZ * Math.pow(2, (tonic + semi) / 12), lo) * 100) / 100; }
-  function chordOf(world, beat) { var prog = WORLD_CHORDS[world] || WORLD_CHORDS[1]; return prog[Math.floor(Math.max(0, beat) / MEASURE_B) % prog.length]; }
-  function chordTones(ch) { return [ch.root, ch.root + (ch.minor ? 3 : 4), ch.root + 7]; }
-  function chordPenta(ch) { var s = ch.minor ? PENTA_MIN : PENTA_MAJ, out = []; for (var i = 0; i < 5; i++) out.push(ch.root + s[i]); return out; }
-  function chordName(tonic, ch) { return NOTE_NAMES[(tonic + ch.root) % 12] + (ch.minor ? 'm' : ''); }
-  /* tonic pitch class : hash of the line (12 possible) ; the Daily uses the seed of the day */
-  function tonicOf(def) { return (def.seed !== undefined && def.seed !== null ? hashStr('daily:' + def.seed) : hashStr(def.line)) % 12; }
+  /* (16.1) levelMusic(def) -> {mode, prog (roman), kit, level} : campaign from LEVEL_MUSIC, Daily by seed (mode among DAILY_MODES,
+     progression = the first campaign progression of that mode, kit by seed), test lines = level 1 row (lydian, kit A) */
+  function levelMusic(def) {
+    var idx = isFinite(+def.id) ? +def.id - 1 : -1, row;
+    if (def.seed !== undefined && def.seed !== null) {
+      var h = hashStr('mode:' + def.seed), mode = DAILY_MODES[h % DAILY_MODES.length];
+      for (var q = 0; q < LEVEL_MUSIC.length; q++) if (LEVEL_MUSIC[q].mode === mode) { row = LEVEL_MUSIC[q]; break; }
+      return { mode: mode, prog: row.prog, kit: 'ABCD'[(h >>> 8) % 4], level: DAILY_RULE_LEVEL + 1, daily: true };
+    }
+    row = LEVEL_MUSIC[Math.max(0, Math.min(LEVEL_MUSIC.length - 1, idx))];
+    return { mode: row.mode, prog: row.prog, kit: row.kit, level: idx >= 0 ? idx + 1 : 1, daily: false };
+  }
+  /* chordFrom(mode, roman) -> {root (semitones from the tonic), minor, seventh, name} : the root is the mode degree, the quality the case */
+  function chordFrom(mode, roman) {
+    var r = roman.replace(/^b/, ''), seventh = /7$/.test(r); r = r.replace(/7$/, '');
+    var deg = ROMAN[r.toUpperCase()] || 0, sc = MODES[mode].scale;
+    return { root: sc[deg], minor: r === r.toLowerCase(), seventh: seventh, roman: roman };
+  }
+  function progOf(mus) { var out = []; for (var i = 0; i < mus.prog.length; i++) out.push(chordFrom(mus.mode, mus.prog[i])); return out; }
+  function chordAt(prog, beat) { return prog[Math.floor(Math.max(0, beat) / MEASURE_B) % prog.length]; }
+  /* triad root-3rd-5th ; a dominant 7th is voiced root-3rd-7th (3 voices everywhere, the pad and the cadence keep 3 voices) */
+  function chordTones(ch) { return [ch.root, ch.root + (ch.minor ? 3 : 4), ch.root + (ch.seventh ? 10 : 7)]; }
+  /* the pentatonic of the MODE (semitones from the tonic) : lead, hook and success melody (16.1) */
+  function modePenta(mode) { var m = MODES[mode], out = []; for (var i = 0; i < m.penta.length; i++) out.push(m.scale[m.penta[i]]); return out; }
+  function chordName(tonic, ch) { return NOTE_NAMES[(tonic + ch.root) % 12] + (ch.minor ? 'm' : '') + (ch.seventh ? '7' : ''); }
+  /* tonic pitch class : hash of the line (12 possible) ; the Daily uses the seed of the day. A campaign level whose hash lands on the
+     tonic of the previous level is shifted a fourth up so two consecutive levels never share (mode, kit, tonic) (16.3). */
+  function tonicOf(def) {
+    if (def.seed !== undefined && def.seed !== null) return hashStr('daily:' + def.seed) % 12;
+    var t = hashStr(def.line) % 12, idx = isFinite(+def.id) ? +def.id - 1 : -1;
+    if (idx >= 1 && idx < LEVELS.length && LEVELS[idx].line === def.line && hashStr(LEVELS[idx - 1].line) % 12 === t) t = (t + 5) % 12;
+    return t;
+  }
   function padVoices(tonic, ch) { var t = chordTones(ch), fr = []; for (var i = 0; i < 3; i++) fr.push(pitchHz(tonic, t[i], 220)); fr.sort(function (a, b) { return a - b; }); return fr; }
+  /* (16.2) hat pattern of a line : hash -> one of the 6 patterns */
+  function hatPatternOf(def) { return hashStr('hat:' + def.line) % HAT_PATTERNS.length; }
+  /* (16.2) hook : 8 notes of the mode pentatonic from the first 8 obstacles of the line (cycled when the line is shorter) :
+     wall -> low degree (0 / 1 / 2 by position mod 3), field -> high degree (3 / 4 by parity), battery -> middle (2), coins -> held note (1 beat, same pitch) */
+  function hookOf(core, mode) {
+    var obs = [], i, penta = modePenta(mode), degs = [], durs = [], kinds = [];
+    for (i = 0; i < core.length; i++) if (OBST[core[i]]) obs.push({ c: core[i], i: i });
+    if (!obs.length) obs.push({ c: 'W', i: 0 });
+    var last = 2;
+    for (i = 0; i < HOOK_LEN; i++) {
+      var o = obs[i % obs.length], k = arrivalKind(o.c, o.i), d, held = false;
+      if (o.c === 'C' || o.c === 'G') { d = last; held = true; }
+      else if (k === 'wall') d = o.i % 3;
+      else if (k === 'field') d = 3 + (o.i % 2);
+      else d = 2;
+      last = d; degs.push(d); durs.push(held ? 1 : 0.5); kinds.push(held ? 'hold' : (k || 'mid'));
+    }
+    var semis = []; for (i = 0; i < degs.length; i++) semis.push(penta[degs[i]]);
+    return { degrees: degs, semis: semis, durs: durs, kinds: kinds };
+  }
   function compileMusic(lvl) {
     var def = lvl.def, core = def.line.replace(/\|/g, ''), len = lvl.length, tonic = tonicOf(def), world = 1;
-    var snare = !!def.bpmEnd || (isFinite(+def.id) && +def.id >= SNARE_FROM_LEVEL);
-    var ev = [], i, k, m, measures = Math.ceil(len / MEASURE_B), prog = WORLD_CHORDS[world];
+    var mus = levelMusic(def), prog = progOf(mus), kit = MKIT[mus.kit], lv = mus.level, penta = modePenta(mus.mode), scale = MODES[mus.mode].scale;
+    var snare = lv >= SNARE_FROM_LEVEL, backbeat = !mus.daily && lv >= SNARE_BACKBEAT_FROM_LEVEL, kickAnd4 = lv >= KICK_AND4_FROM_LEVEL, pulse = lv >= PAD_PULSE_FROM_LEVEL;
+    var hatPat = hatPatternOf(def), hats = HAT_PATTERNS[hatPat].hits, hook = hookOf(core, mus.mode);
+    var ev = [], i, k, m, measures = Math.ceil(len / MEASURE_B);
     var push = function (beat, layer, freqs, dur, gain, extra) {
       var e = { beat: Math.round(beat * 1000) / 1000, layer: layer, freqs: freqs, dur: Math.round(dur * 1000) / 1000, gain: gain, p: Math.round(beat / len * 1000) / 1000 };
       e.audible = e.p >= MGATE[layer];
@@ -2612,32 +2712,44 @@
     };
     var secB = function (beat, s) { return s * bpmAt(lvl, beat) / 60; };          /* seconds -> beats at the local tempo (Daily ramp) */
     for (m = 0; m < measures; m++) {
-      var ch = chordOf(world, m * MEASURE_B);
-      push(m * MEASURE_B, 'pad', padVoices(tonic, ch), Math.min(MEASURE_B, len - m * MEASURE_B), MLAYER.pad.gain, { chord: chordName(tonic, ch), open: m === measures - 1 });
+      var ch = chordAt(prog, m * MEASURE_B);
+      push(m * MEASURE_B, 'pad', padVoices(tonic, ch), Math.min(MEASURE_B, len - m * MEASURE_B), MLAYER.pad.gain, { chord: chordName(tonic, ch), open: m === measures - 1, pulse: pulse });
     }
     var wallIn = {};
-    for (i = 0; i < core.length; i++) if (arrivalKind(core[i], i) === 'wall') { wallIn[Math.floor(i / MEASURE_B)] = 1; push(i, 'bass', [pitchHz(tonic, chordOf(world, i).root, 55)], MLAYER.bass.dur, MLAYER.bass.gain); }
-    for (m = 0; m < measures; m++) if (!wallIn[m]) push(m * MEASURE_B, 'bass', [pitchHz(tonic, chordOf(world, m * MEASURE_B).root, 55)], MLAYER.bass.dur, MLAYER.bass.gain, { fill: true });
+    for (i = 0; i < core.length; i++) if (arrivalKind(core[i], i) === 'wall') { wallIn[Math.floor(i / MEASURE_B)] = 1; push(i, 'bass', [pitchHz(tonic, chordAt(prog, i).root, 55)], MLAYER.bass.dur, MLAYER.bass.gain); }
+    for (m = 0; m < measures; m++) if (!wallIn[m]) push(m * MEASURE_B, 'bass', [pitchHz(tonic, chordAt(prog, m * MEASURE_B).root, 55)], MLAYER.bass.dur, MLAYER.bass.gain, { fill: true });
+    var leadFreqs = function (semi) { var f = pitchHz(tonic, semi, NOTE_BASE); return kit.sub ? [f, Math.round(f * 50) / 100] : [f]; };
     for (i = 0; i < core.length; i++) {
       var c = core[i];
-      if (arrivalKind(c, i) === 'field') push(i, 'lead', [pitchHz(tonic, chordPenta(chordOf(world, i))[i % 5], NOTE_BASE)], MLAYER.lead.dur, MLAYER.lead.gain);
+      if (arrivalKind(c, i) === 'field') push(i, 'lead', leadFreqs(penta[i % 5]), MLAYER.lead.dur, MLAYER.lead.gain);
       else if (c === 'C' || c === 'G') {
-        var t3 = chordTones(chordOf(world, i)), fa = [];
+        var t3 = chordTones(chordAt(prog, i)), fa = [];
         for (k = 0; k < 3; k++) fa.push(pitchHz(tonic, t3[k], NOTE_BASE * 2));
         fa.sort(function (a, b) { return a - b; }); if (c === 'G') fa.reverse();
         for (k = 0; k < 3; k++) push(i + 0.1 + 0.3 * k, 'arp', [fa[k]], MLAYER.arp.dur, MLAYER.arp.gain, { ghost: c === 'G' });
       }
     }
-    for (i = 0; i < len; i++) {
-      if (i % MEASURE_B === 2) {
-        push(i, 'kick', [MLAYER.kick.f0], secB(i, MLAYER.kick.dur), MLAYER.kick.gain);
-        if (snare) push(i, 'snare', [], secB(i, MLAYER.snare.dur), MLAYER.snare.gain);
+    /* (16.2) hook : every HOOK_EVERY-th measure (4, 8, 12...) + the measure where the lead enters (first measure at >= 25 %) */
+    var entry = Math.ceil(MGATE.lead * len / MEASURE_B), hookAt = [];
+    for (m = 0; m < measures; m++) if ((m + 1) % HOOK_EVERY === 0 || m === entry) hookAt.push(m);
+    for (k = 0; k < hookAt.length; k++) {
+      m = hookAt[k];
+      for (i = 0; i < HOOK_LEN; i++) {
+        var hb = m * MEASURE_B + i * 0.5; if (hb >= len) break;
+        push(hb, 'hook', leadFreqs(hook.semis[i]), hook.durs[i], MLAYER.hook.gain, { n: i, entry: m === entry });
       }
-      push(i + 0.5, 'hat', [MLAYER.hat.f0], secB(i, MLAYER.hat.dur), MLAYER.hat.gain);
+    }
+    for (i = 0; i < len; i++) {
+      var pos = i % MEASURE_B;
+      if (pos === 2) push(i, 'kick', [MLAYER.kick.f0], secB(i, MLAYER.kick.dur), MLAYER.kick.gain);
+      if (kickAnd4 && pos === 3 && i + 0.5 < len) push(i + 0.5, 'kick', [MLAYER.kick.f0], secB(i, MLAYER.kick.dur), MLAYER.kick.gain, { and4: true });
+      if (snare && (backbeat ? (pos === 1 || pos === 3) : pos === 2)) push(i, 'snare', [], secB(i, MLAYER.snare.dur), MLAYER.snare.gain);
+      for (k = 0; k < 2; k++) if (hats[pos * 2 + k] && i + k * 0.5 < len) push(i + k * 0.5, 'hat', [MLAYER.hat.f0], secB(i, MLAYER.hat.dur), MLAYER.hat.gain);
     }
     ev.sort(function (a, b) { return a.beat - b.beat || MLAYER_ORDER.indexOf(a.layer) - MLAYER_ORDER.indexOf(b.layer); });
     var chords = []; for (k = 0; k < prog.length; k++) chords.push(chordName(tonic, prog[k]));
-    return { tonic: tonic, tonicName: NOTE_NAMES[tonic], world: world, chords: chords, snare: snare, length: len, events: ev };
+    return { tonic: tonic, tonicName: NOTE_NAMES[tonic], world: world, mode: mus.mode, modeLabel: MODES[mus.mode].label, scale: scale, penta: penta, progression: mus.prog.slice(), chords: chords,
+      kit: mus.kit, level: lv, daily: mus.daily, hatPattern: HAT_PATTERNS[hatPat].name, hats: hats.slice(), hook: hook, snare: snare, backbeat: backbeat, kickAnd4: kickAnd4, pulse: pulse, length: len, events: ev };
   }
   /* --- scheduling --- */
   function surgeRatio() { var k = S.surge.active ? 1 : (S.surge.recover > 0 ? Math.max(0, Math.min(1, S.surge.recover / SURGE_RECOVER_S)) : 0); return { k: k, ratio: 1 + (Math.pow(2, SURGE_SEMITONES / 12) - 1) * k }; }
@@ -2651,18 +2763,38 @@
         MUS.comp = comp; MUS.out = out;
       } catch (e) { return null; }
     }
-    if (!MUS.bus) { try { MUS.bus = c.createGain(); MUS.bus.gain.value = 1; MUS.bus.connect(MUS.comp); } catch (e) { MUS.bus = null; } }
+    if (!MUS.bus) {
+      try {
+        MUS.bus = c.createGain(); MUS.bus.gain.value = 1; MUS.bus.connect(MUS.comp);
+        /* (16.2) one slow LFO per bus (0.1 Hz sine -> +/- PAD_LFO_DEPTH Hz) shared by every pad filter of the run */
+        MUS.lfo = c.createOscillator(); MUS.lfo.type = 'sine'; MUS.lfo.frequency.value = PAD_LFO_HZ;
+        MUS.lfoGain = c.createGain(); MUS.lfoGain.gain.value = PAD_LFO_DEPTH; MUS.lfo.connect(MUS.lfoGain); MUS.lfo.start(c.currentTime);
+        MUS.lfoT0 = c.currentTime;
+      } catch (e) { MUS.bus = null; MUS.lfo = null; MUS.lfoGain = null; }
+    }
     return MUS.bus;
+  }
+  /* (16.2) kit D pad : 25 % pulse wave (Fourier series of a rectangle of duty PULSE_DUTY, no DC) built once per context */
+  function pulseWave(c) {
+    if (MUS.pulse) return MUS.pulse;
+    var n = PULSE_HARMONICS + 1, re = new Float32Array(n), im = new Float32Array(n);
+    for (var k = 1; k < n; k++) { re[k] = 2 * Math.sin(k * Math.PI * PULSE_DUTY) / (k * Math.PI); im[k] = 0; }
+    try { MUS.pulse = c.createPeriodicWave(re, im, { disableNormalization: false }); } catch (e) { MUS.pulse = null; }
+    return MUS.pulse;
+  }
+  function setOscType(c, osc, type) {
+    if (type === 'pulse') { var w = pulseWave(c); if (w) { osc.setPeriodicWave(w); return; } type = 'square'; }
+    osc.type = type;
   }
   /* musicCut() : the current bus fades out in 20 ms and is abandoned (pending voices die with it) ; the next event opens a new bus */
   function musicCut() {
-    var c = audio.context(), bus = MUS.bus;
-    MUS.bus = null; MUS.live = [];
+    var c = audio.context(), bus = MUS.bus, lfo = MUS.lfo;
+    MUS.bus = null; MUS.live = []; MUS.lfo = null; MUS.lfoGain = null;
     if (!bus || !c) return;
     try {
       var now = c.currentTime;
       bus.gain.cancelScheduledValues(now); bus.gain.setValueAtTime(bus.gain.value, now); bus.gain.linearRampToValueAtTime(0, now + 0.02);
-      window.setTimeout(function () { try { bus.disconnect(); } catch (e) { } }, 6000);
+      window.setTimeout(function () { try { bus.disconnect(); if (lfo) { lfo.stop(); lfo.disconnect(); } } catch (e) { } }, 6000);
     } catch (e) { }
   }
   function noiseBuffer(c) {
@@ -2682,40 +2814,60 @@
     var bus = musicBus(c); if (!bus) return false;
     var L = MLAYER[ev.layer] || {}, now = c.currentTime, i;
     if (!(at > now)) at = now;
-    var pad = ev.layer === 'pad' || ev.layer === 'cadence', oct = ev.layer === 'lead' && MUS.octave;
+    var pad = ev.layer === 'pad' || ev.layer === 'cadence', tonal = ev.layer === 'lead' || ev.layer === 'hook', oct = ev.layer === 'lead' && MUS.octave;
+    /* (16.2) timbre kit of the run (or of the title pad) : voice types, filters, vibrato, sub-octave */
+    var kitId = ev.kit || (MUS.plan && !ev.title ? MUS.plan.kit : (MUS.titleMusic ? MUS.titleMusic.kit : 'A')), kit = MKIT[kitId] || MKIT.A;
     var base = ev.freqs.slice(); if (oct) { MUS.octave = false; base.push(base[0] * 2); }
     var freqs = []; for (i = 0; i < base.length; i++) freqs.push(Math.round(base[i] * sr.ratio * 100) / 100);
     /* pad : the sustain covers the whole measure and the release overlaps the next pad's attack (no dip on the bar line) ;
-       the voices share the event gain (each voice gain / sqrt(n)) so a 3-voice pad peaks near the nominal 0.05 */
+       the voices share the event gain (each voice gain / sqrt(n)) so a 3-voice pad peaks near the nominal 0.04 */
     if (ev.layer === 'pad' && L.release) durS += L.release;
-    var vg = pad ? ev.gain / Math.sqrt(Math.max(1, base.length)) : ev.gain;
+    var vg = (pad || tonal) ? ev.gain / Math.sqrt(Math.max(1, base.length)) : ev.gain;
+    var filt = L.filter || 0, oscType = L.type || 'sine', detune = L.detune || 0, vib = 0, lfo = false, pulseS = 0;
+    if (ev.layer === 'pad') { filt = kit.padFilter; detune = kit.detune; lfo = !!MUS.lfoGain && !ev.title; if (ev.pulse && !ev.title) pulseS = 0.5 / (S.rate > 0 ? S.rate : S.bpm / 60); }
+    else if (ev.layer === 'bass') { oscType = kit.bass; filt = kit.bassFilter; }
+    else if (tonal) { oscType = kit.lead; filt = kit.leadFilter; vib = kit.vib; }
     try {
-      var g = c.createGain(), flt = null, fc = L.filter ? L.filter + 5000 * sr.k : 0;
+      var g = c.createGain(), flt = null, fc = filt ? filt + 5000 * sr.k : 0;
       if (fc) {
         flt = c.createBiquadFilter(); flt.type = 'lowpass'; flt.frequency.setValueAtTime(fc, at);
         if (ev.open && L.filterOpen) flt.frequency.linearRampToValueAtTime(L.filterOpen + 5000 * sr.k, at + durS);
+        if (lfo) MUS.lfoGain.connect(flt.frequency);
         g.connect(flt); flt.connect(bus);
       } else g.connect(bus);
       var a = Math.min(L.attack || 0.005, durS * 0.5), hold = L.release ? Math.max(a, durS - L.release) : a;
       g.gain.setValueAtTime(0.0001, at);
       g.gain.exponentialRampToValueAtTime(vg, at + a);
+      /* (16.2) eighth pulsation of the pad (levels >= 4) : dip to 55 % on every eighth, back to full over 60 % of the eighth */
+      if (pulseS > 0 && hold > a) {
+        for (var tk = at + pulseS; tk + PAD_PULSE_RISE * pulseS < at + hold; tk += pulseS) {
+          if (tk <= at + a) continue;                 /* the attack ramp owns the first eighth */
+          g.gain.setValueAtTime(vg * PAD_PULSE_DIP, tk); g.gain.linearRampToValueAtTime(vg, tk + PAD_PULSE_RISE * pulseS);
+        }
+      }
       if (hold > a) g.gain.setValueAtTime(vg, at + hold);
       g.gain.exponentialRampToValueAtTime(0.0001, at + durS);
       if (L.noise) {
         var src = c.createBufferSource(); src.buffer = noiseBuffer(c); src.connect(g); src.start(at); src.stop(at + durS + 0.02);
       } else for (i = 0; i < freqs.length; i++) {
         var osc = c.createOscillator();
-        osc.type = pad ? (i % 2 ? 'sine' : 'triangle') : (L.type || 'sine');
+        setOscType(c, osc, pad ? kit.pad[i % kit.pad.length] : oscType);
         osc.frequency.setValueAtTime(freqs[i], at);
         if (L.f1) osc.frequency.exponentialRampToValueAtTime(Math.max(20, L.f1 * sr.ratio), at + durS);
-        if (pad && osc.detune && L.detune) osc.detune.value = (i - 1) * L.detune;
+        if (pad && osc.detune && detune) osc.detune.value = (i - 1) * detune;
+        if (vib && osc.detune) {                  /* kit B : sine lead with a 6 Hz vibrato of +/- VIB_CENTS cents */
+          var vo = c.createOscillator(), vgn = c.createGain(); vo.frequency.value = vib; vgn.gain.value = VIB_CENTS;
+          vo.connect(vgn); vgn.connect(osc.detune); vo.start(at); vo.stop(at + durS + 0.02);
+        }
         osc.connect(g); osc.start(at); osc.stop(at + durS + 0.02);
-        if (pad || ev.layer === 'bass' || ev.layer === 'lead') MUS.live.push({ osc: osc, f: base[i], flt: ev.open ? null : flt, fc: L.filter, end: at + durS });
+        if (pad || ev.layer === 'bass' || tonal) MUS.live.push({ osc: osc, f: base[i], flt: ev.open ? null : flt, fc: filt, end: at + durS });
       }
     } catch (e) { return false; }
-    /* dt = seconds between the tick and the start (0 when late), filter / filter1 / f1 = what was really set (offline render of the videos) */
+    /* dt = seconds between the tick and the start (0 when late), filter / filter1 / f1 / kit / lfo / pulse / vib = what was really set
+       (offline render of the videos) */
     logMusic(ev, freqs, durS, { dt: Math.round((at - now) * 1000) / 1000, filter: fc || undefined, filter1: ev.open && fc ? L.filterOpen + 5000 * sr.k : undefined,
-      f1: L.f1 ? Math.round(L.f1 * sr.ratio * 100) / 100 : undefined, oct: oct, ratio: sr.k > 0 ? Math.round(sr.ratio * 10000) / 10000 : undefined, open: ev.open, title: ev.title, chord: ev.chord });
+      f1: L.f1 ? Math.round(L.f1 * sr.ratio * 100) / 100 : undefined, oct: oct, ratio: sr.k > 0 ? Math.round(sr.ratio * 10000) / 10000 : undefined, open: ev.open, title: ev.title, chord: ev.chord,
+      kit: kitId, lfo: lfo ? Math.round((at - MUS.lfoT0) * 1000) / 1000 : undefined, pulse: pulseS ? Math.round(pulseS * 10000) / 10000 : undefined, vib: vib || undefined, n: ev.n });
     return true;
   }
   /* musicTick() : like audioTick, schedules the plan events falling in the real lookahead (beats -> seconds with S.rate) ; a pad whose
@@ -2748,15 +2900,17 @@
     var c = actx(); if (!c) return;
     var now = c.currentTime, step = 60 / TITLE_PAD_BPM * MEASURE_B;
     if (MUS.titleNext < now - 0.05) { MUS.titleNext = now; MUS.titleIdx = 0; }
+    if (!MUS.titleMusic) MUS.titleMusic = levelMusic(levelDef(nextLevelNumber()));
+    var prog = progOf(MUS.titleMusic);
     while (MUS.titleNext < now + AUDIO_LOOK_S) {
-      var ch = chordOf(1, MUS.titleIdx * MEASURE_B);
-      scheduleMusic({ beat: -1, layer: 'pad', freqs: padVoices(MUS.titleTonic, ch), dur: MEASURE_B, gain: MLAYER.pad.gain, title: true, chord: chordName(MUS.titleTonic, ch) }, MUS.titleNext, step + 0.3, { k: 0, ratio: 1 });
+      var ch = chordAt(prog, MUS.titleIdx * MEASURE_B);
+      scheduleMusic({ beat: -1, layer: 'pad', freqs: padVoices(MUS.titleTonic, ch), dur: MEASURE_B, gain: MLAYER.pad.gain, title: true, chord: chordName(MUS.titleTonic, ch), kit: MUS.titleMusic.kit, mode: MUS.titleMusic.mode }, MUS.titleNext, step + 0.3, { k: 0, ratio: 1 });
       MUS.titleIdx++; MUS.titleNext += step;
     }
   }
   function musicCadence() {
     if (!MUS.plan) return;
-    var ch = WORLD_CHORDS[MUS.plan.world][0];
+    var ch = chordFrom(MUS.plan.mode, MUS.plan.progression[0]);
     scheduleMusic({ beat: S.beat, layer: 'cadence', freqs: padVoices(MUS.plan.tonic, ch), dur: MLAYER.cadence.dur, gain: MLAYER.cadence.gain, chord: chordName(MUS.plan.tonic, ch) }, 0, MLAYER.cadence.dur, { k: 0, ratio: 1 });
   }
   function musicDeath() {
@@ -3796,7 +3950,8 @@
       musicLog: function () { return MUS.log.slice(); },
       clearMusicLog: function () { MUS.log = []; },
       setMusic: function (v) { return setMusic(!!v); },
-      musicState: function () { var sr = surgeRatio(); return { on: musicOn(), unlocked: audio.unlocked(), muted: audio.muted(), active: !!(audio.unlocked() && !audio.muted() && musicOn() && (MUS.bus || S.mode === 'title' || S.mode === 'menu')), bus: !!MUS.bus, live: MUS.live.length, ratio: sr.ratio, k: sr.k, next: MUS.next, titleIdx: MUS.titleIdx, titleTonic: MUS.titleTonic, octave: MUS.octave }; },
+      musicState: function () { var sr = surgeRatio(); return { on: musicOn(), unlocked: audio.unlocked(), muted: audio.muted(), active: !!(audio.unlocked() && !audio.muted() && musicOn() && (MUS.bus || S.mode === 'title' || S.mode === 'menu')), bus: !!MUS.bus, live: MUS.live.length, ratio: sr.ratio, k: sr.k, next: MUS.next, titleIdx: MUS.titleIdx, titleTonic: MUS.titleTonic, titleMode: MUS.titleMusic ? MUS.titleMusic.mode : null, titleKit: MUS.titleMusic ? MUS.titleMusic.kit : null, octave: MUS.octave, lfo: !!MUS.lfo }; },
+      musicTables: function () { return JSON.parse(JSON.stringify({ MODES: MODES, LEVEL_MUSIC: LEVEL_MUSIC, MKIT: MKIT, HAT_PATTERNS: HAT_PATTERNS, DAILY_MODES: DAILY_MODES })); },
       clickPlay: clickPlay, toTitle: toTitle,
       progress: progress, economy: economy, shop: shop, daily: daily, ads: Ads, save: save, audio: audio, loop: loop, button: button, GC: GC,
       levels: LEVELS, validateLine: validateLine, generateDaily: generateDaily, DAILY_RULE_LEVEL: DAILY_RULE_LEVEL,
