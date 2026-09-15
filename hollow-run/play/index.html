@@ -123,6 +123,10 @@
   .flame { display: inline-block; vertical-align: middle; width: 14px; height: 18px; margin-right: 4px; }
   #dead .cause { font-size: 13px; opacity: .8; text-align: center; margin-top: -4px; }
   .center { text-align: center; }
+  /* share (17.3) : share icon on the buttons, toast after the download fallback */
+  .shicon { width: 15px; height: 15px; vertical-align: -2px; margin-right: 6px; }
+  #toast { position: absolute; left: 50%; bottom: 14%; transform: translateX(-50%); background: rgba(11,16,32,.96); color: #E8F1FF; border: 1px solid #00F0FF; border-radius: 10px; padding: 10px 16px; font-size: 14px; pointer-events: none; z-index: 20; opacity: 0; transition: opacity .25s; max-width: 90vw; text-align: center; }
+  #toast.on { opacity: 1; }
   .board { font-size: 13px; max-height: 120px; overflow: auto; }
   .board div { display: flex; justify-content: space-between; padding: 2px 0; border-bottom: 1px solid rgba(232,241,255,.08); }
 </style>
@@ -171,6 +175,7 @@
     <button id="btnMute">Sound</button>
     <button id="btnMusic2">Music</button>
     <button id="btnFull">Fullscreen</button>
+    <button id="btnShareLevels"><svg class="shicon" viewBox="0 0 24 24"><circle cx="18" cy="5" r="3" fill="currentColor"/><circle cx="6" cy="12" r="3" fill="currentColor"/><circle cx="18" cy="19" r="3" fill="currentColor"/><path d="M8.6 13.3 L15.4 17.7 M15.4 6.3 L8.6 10.7" stroke="currentColor" stroke-width="2" fill="none"/></svg>Share my progress</button>
     <button id="btnBack">Title</button>
   </div>
 
@@ -194,6 +199,7 @@
     <div class="nextskin" id="nextSkin"></div>
     <div class="btns">
       <button id="btnNext" class="pri">Next level</button>
+      <button id="btnShare"><svg class="shicon" viewBox="0 0 24 24"><circle cx="18" cy="5" r="3" fill="currentColor"/><circle cx="6" cy="12" r="3" fill="currentColor"/><circle cx="18" cy="19" r="3" fill="currentColor"/><path d="M8.6 13.3 L15.4 17.7 M15.4 6.3 L8.6 10.7" stroke="currentColor" stroke-width="2" fill="none"/></svg>Share</button>
       <button id="btnReplay">Replay</button>
       <button id="btnWinMenu">Menu</button>
     </div>
@@ -201,6 +207,7 @@
   </div>
 
   <div id="panel" class="panel hidden"></div>
+  <div id="toast" aria-live="polite"></div>
 </div>
 
 <script>
@@ -2092,21 +2099,29 @@
   var AD_ICON = '<svg class="adicon" viewBox="0 0 24 24"><rect x="2" y="5" width="14" height="14" rx="2" fill="none" stroke="currentColor" stroke-width="2"/><path d="M16 10 L22 6 V18 L16 14 Z" fill="currentColor"/></svg>';
   function adLabel(text) { return AD_ICON + text; }
   /* ad gate : one flag for both break kinds ; adBegin is idempotent (the SDK onStart callback may or may not be called) */
-  var AD = { active: false, prevMuted: false, pausedLoop: false };
-  function adBegin() {
+  var AD = { active: false, muted: false, prevMuted: false, pausedLoop: false };
+  /* adBegin(deferMute) : gate on (input off, loop paused) ; the audio is muted right away (Poki) or later by adMute() when the SDK
+     reports that a video really plays (CrazyGames adStarted : "only mute when the ad actually starts, not when you request it") */
+  function adBegin(deferMute) {
     if (AD.active) return;
-    AD.active = true;
-    AD.prevMuted = audio.muted();
-    if (!AD.prevMuted) { audio.setMuted(true); audioSetMuted(true); }
-    musicCut();
+    AD.active = true; AD.muted = false;
+    if (!deferMute) adMute();
     button.enable(false);
     $('stage').style.pointerEvents = 'none';
     if (loop && !loop.paused()) { loop.pause('ad'); AD.pausedLoop = true; }
   }
+  function adMute() {
+    if (!AD.active || AD.muted) return;
+    AD.muted = true;
+    AD.prevMuted = audio.muted();
+    if (!AD.prevMuted) { audio.setMuted(true); audioSetMuted(true); }
+    musicCut();
+  }
   function adEnd() {
     if (!AD.active) return;
     AD.active = false;
-    if (!AD.prevMuted) { audio.setMuted(false); audioSetMuted(false); ensureMusic(); }
+    if (AD.muted && !AD.prevMuted) { audio.setMuted(false); audioSetMuted(false); ensureMusic(); }
+    AD.muted = false;
     button.enable(true);
     $('stage').style.pointerEvents = '';
     if (AD.pausedLoop) { AD.pausedLoop = false; loop.resume('ad'); }
@@ -2165,6 +2180,96 @@
     /* Poki page jump : the game is embedded in a scrollable page ; the core already cancels Space / ArrowUp, add ArrowDown */
     window.addEventListener('keydown', function (ev) { if (ev.key === 'ArrowDown') ev.preventDefault(); });
   }
+
+  /* =================== 3c. CrazyGames SDK adapter (portal build only, 17.2) ===================
+     Active only when the build defines window.HR_PORTAL === 'crazygames' (tools/build_portal.py --target crazygames, which also puts
+     the official SDK v3 <script> in <head> ; the URL lives in build_portal.py only). Same GC.Ads adapter interface as PokiAdapter,
+     same ad gate. CrazyGames rules applied (docs.crazygames.com/sdk/intro, /sdk/game, /sdk/video-ads, /requirements/ads, read
+     2026-09-15) :
+       - window.CrazyGames.SDK.init() -> Promise, MUST be awaited before any other call ; SDK.environment 'crazygames' | 'local'
+         (localhost : demo ads) | 'disabled' (any other domain : every call throws) -> disabled, script missing, init rejected or
+         > 3 s : Ads.Stub stays, the game is playable without ads
+       - SDK.game.loadingStart() / loadingStop() around the (already finished) load, right after init ; SDK.game.gameplayStart() when the
+         player controls (level / Daily start, resume) ; SDK.game.gameplayStop() on death, win, quit to menu -- but NOT on tab hidden /
+         blur ("don't call this event when the user switches focus, we handle this on our side")
+       - SDK.ad.requestAd('midgame' | 'rewarded', {adStarted, adFinished, adError}) : UI blocked from the request until adFinished /
+         adError ; audio muted only from adStarted (a request may be unfilled) ; adError = not granted, the game goes on ; no internal
+         frequency timer (the SDK ignores early midgame requests, error code adCooldown) ; midgame before the next level and before a
+         retry -- except when a rewarded Continue is offered on that death screen (rule "either a midgame and restart, or a rewarded
+         to keep playing, not both")
+       - SDK.ad.hasAdblock() -> Promise<boolean> : when true the rewarded buttons are hidden (never a clickable ad button without
+         effect), the game stays fully playable
+       - SDK.game.happytime() on a real achievement only (MEDAL = every PERFECT of a level, or world 1 completed), not on every win
+       - SDK.game.inviteLink({}) -> the CrazyGames URL of the game, used by the share card (17.3) */
+  var CG_INIT_TIMEOUT_MS = 3000, CG_AD_TIMEOUT_MS = 120000;
+  function cgSdk() { var c = window.CrazyGames; return c && c.SDK ? c.SDK : null; }
+  function CrazyGamesAdapter() {
+    var playing = false, adblock = false;
+    function sdk() { var s = cgSdk(); return s && s.ad && typeof s.ad.requestAd === 'function' ? s : null; }
+    function canBreak() { return S.mode !== 'play' && !AD.active; }
+    function show(type) {
+      var s = sdk();
+      if (!s || !canBreak()) return Promise.resolve(false);
+      return new Promise(function (resolve) {
+        var done = false, timer = null;
+        function finish(ok) { if (done) return; done = true; clearTimeout(timer); adEnd(); resolve(ok); }
+        adBegin(true);
+        timer = setTimeout(function () { finish(false); }, CG_AD_TIMEOUT_MS);   /* safety net : never leave the UI blocked */
+        try {
+          s.ad.requestAd(type, {
+            adStarted: function () { adMute(); },
+            adFinished: function () { finish(true); },
+            adError: function () { finish(false); }
+          });
+        } catch (e) { finish(false); }
+      });
+    }
+    return {
+      name: 'crazygames',
+      init: function () { },
+      rewarded: function () { return adblock ? Promise.resolve(false) : show('rewarded'); },
+      interstitial: function () { return show('midgame'); },
+      gameplayStart: function () { var s = cgSdk(); if (!s || playing || AD.active) return; playing = true; try { s.game.gameplayStart(); } catch (e) { } },
+      gameplayStop: function () { var s = cgSdk(); if (!s || !playing) return; playing = false; try { s.game.gameplayStop(); } catch (e) { } },
+      loadingStart: function () { var s = cgSdk(); if (s) { try { s.game.loadingStart(); } catch (e) { } } },
+      loadingStop: function () { var s = cgSdk(); if (s) { try { s.game.loadingStop(); } catch (e) { } } },
+      happytime: function () { var s = cgSdk(); if (s) { try { s.game.happytime(); } catch (e) { } } },
+      inviteLink: function () { var s = cgSdk(); try { var u = s.game.inviteLink({}); return typeof u === 'string' && u ? u : null; } catch (e) { return null; } },
+      setAdblock: function (v) { adblock = !!v; },
+      adblock: function () { return adblock; },
+      playing: function () { return playing; }
+    };
+  }
+  var cgAdapter = null;
+  function cgActive() { return !!cgAdapter && Ads.adapter() === cgAdapter; }
+  /* rewarded buttons hidden when the portal reports an adblocker (CrazyGames) ; everything else unchanged */
+  function rewardedBlocked() { return cgActive() && cgAdapter.adblock(); }
+  function cgActivate() {
+    var s = cgSdk();
+    if (!s || typeof s.init !== 'function') return;     /* script blocked or absent : Stub stays */
+    if (s.environment === 'disabled') return;           /* game hosted outside CrazyGames : every SDK call would throw */
+    var done = false;
+    function ready() {
+      if (done) return; done = true;
+      cgAdapter = CrazyGamesAdapter();
+      Ads.configure({ caps: { interstitialGapMs: 0 } });   /* the SDK decides the midgame frequency */
+      Ads.setAdapter(cgAdapter);
+      Ads.loadingStart(); Ads.loadingStop();               /* single bundle : the load is over when init resolves */
+      if (S.mode === 'play') Ads.gameplayStart();
+      try {
+        Promise.resolve(s.ad.hasAdblock()).then(function (b) { cgAdapter.setAdblock(b); if (b) ui(); }, function () { });
+      } catch (e) { }
+      T('custom', { name: 'crazygames_sdk_ready', env: s.environment || null });
+    }
+    function fail() { done = true; }
+    var timer = setTimeout(fail, CG_INIT_TIMEOUT_MS);
+    var p;
+    try { p = s.init(); } catch (e) { clearTimeout(timer); fail(); return; }
+    Promise.resolve(p).then(function () { clearTimeout(timer); ready(); }, function () { clearTimeout(timer); fail(); });
+    window.addEventListener('keydown', function (ev) { if (ev.key === 'ArrowDown') ev.preventDefault(); });
+  }
+  /* portal adapter active (Poki or CrazyGames) : the retry goes through an interstitial opportunity */
+  function portalActive() { return pokiActive() || cgActive(); }
 
   /* =================== 4. state + simulation (deterministic, fixed step) =================== */
   var S = {
@@ -2316,7 +2421,9 @@
   function retry() {
     if (AD.active) return;
     var go = function () { if (S.daily) startDaily(); else if (S.custom) loadLine(S.lvl.def.line, S.lvl.def.bpm); else startLevel(S.level); };
-    if (pokiActive() && S.mode !== 'play') Ads.request('interstitial').then(go); else go();
+    /* CrazyGames : no midgame on a death screen that offers a rewarded Continue (never both between two attempts) */
+    var cgSkip = cgActive() && S.mode === 'dead' && !$('btnContinue').classList.contains('hidden');
+    if (portalActive() && S.mode !== 'play' && !cgSkip) Ads.request('interstitial').then(go); else go();
   }
   function leavePlay() { if (S.mode === 'play') { Ads.gameplayStop(); musicCut(); } ensureMusic(); }
   function toMenu() { leavePlay(); S.mode = 'menu'; S.daily = false; ui(); }
@@ -2374,6 +2481,8 @@
       T('level_win', { world: 1, level: S.level, t: Math.round(S.elapsed * 1000), stars: stars, coins: S.runCoins, attempts: progress.attempts(1, S.level), perfect: S.perfectN, perfectTotal: S.lvl.perfectTotal, bpm: S.bpm });
       S.lastResult = { stars: stars, next: res.next && res.next.world === 1 ? res.next : null, coins: S.runCoins, total: total, bonus: S.runBonus, perfect: S.perfectN, perfectTotal: S.lvl.perfectTotal, perfectBest: perfectSaved(S.level) };
       S.failStreak = 0;
+      /* CrazyGames happytime : a real achievement only (MEDAL or world 1 completed), not every level clear */
+      if (cgActive() && ((S.perfectN > 0 && S.perfectN === S.lvl.perfectTotal) || S.level === WORLD_LEVELS)) cgAdapter.happytime();
     }
     ui();
   }
@@ -3686,8 +3795,8 @@
     if (m === 'menu') renderMenu();
     if (m === 'dead') {
       $('deadCause').innerHTML = deathExplanation(S.cause);
-      show('btnContinue', !S.daily && progressPct() >= CONTINUE_MIN_PROGRESS && Ads.canRequest('continue'));
-      show('btnSkip', !S.daily && S.failStreak >= SKIP_AFTER_FAILS && Ads.canRequest('skip'));
+      show('btnContinue', !S.daily && progressPct() >= CONTINUE_MIN_PROGRESS && Ads.canRequest('continue') && !rewardedBlocked());
+      show('btnSkip', !S.daily && S.failStreak >= SKIP_AFTER_FAILS && Ads.canRequest('skip') && !rewardedBlocked());
       $('btnContinue').disabled = false; $('btnContinue').innerHTML = adLabel('Continue (ad)');
     }
     if (m === 'won' || m === 'dailyover') renderWin();
@@ -3752,9 +3861,10 @@
       $('winCoins').innerHTML = 'Score <b>' + r.score + '</b> \u00b7 rank #' + r.rank + (r.official ? ' (official)' : ' (practice)') + '<br>Best today ' + r.best + ' \u00b7 streak ' + flame() + daily.streak();
       $('winPerfect').innerHTML = S.perfectN ? '<b>PERFECT</b> ' + S.perfectN : '';
       $('nextSkin').innerHTML = ''; $('winNext').textContent = '';
-      show('btnNext', false); show('btnReplay', true);
+      show('btnNext', false); show('btnReplay', true); show('btnShare', false);
       $('btnReplay').textContent = daily.canPlayOfficial() ? 'Official run' : 'Practice again';
     } else {
+      show('btnShare', !S.custom);
       $('winTitle').textContent = (S.custom ? 'TEST LINE' : 'LEVEL ' + S.level) + ' CLEAR';
       $('winStars').innerHTML = starsHtml(r.stars || 0);
       $('winCoins').textContent = 'Coins ' + r.coins + '/' + r.total + (r.bonus ? ' (+' + r.bonus + ' x2 bonus)' : '') + ' \u00b7 total ' + economy.coins();
@@ -3770,6 +3880,206 @@
   }
   function flame() { return '<svg class="flame" viewBox="0 0 14 18"><path d="M7 1 C8 5 12 6 12 11 A5 5 0 0 1 2 11 C2 8 4 7 4 5 C5 7 6 7 6 6 C6 4 6 3 7 1Z" fill="#FF7A1A"/><path d="M7 9 C8 11 9.5 11.5 9.5 13.5 A2.5 2.5 0 0 1 4.5 13.5 C4.5 11.5 6 11 7 9Z" fill="#FFD60A"/></svg>'; }
 
+  /* =================== 6b. Share my score (17.3) ===================
+     One tap : (1) a 1080x1350 PNG card drawn in an offscreen canvas with the game's own drawing functions (ctx swap, like the title
+     demo) ; (2) navigator.share({title, text, url, files:[png]}) when the browser can share files (mobile : native sheet with the
+     image), else the PNG is downloaded and "text + url" copied to the clipboard, with a toast.
+     Share URL per target : generic -> SHARE_URL_DEFAULT ; poki -> PokiSDK.shareableURL({}) (Promise) ; crazygames ->
+     SDK.game.inviteLink({}) ; every SDK path falls back to the default. The default URL is assembled at runtime : the strict portal
+     build refuses any http(s):// literal (zero external RESOURCE rule) and a share link is not a resource. */
+  var SHARE_HOST = 'ladenreestudio.github.io/hollow-run/';
+  var SHARE_URL_DEFAULT = 'https:' + '//' + SHARE_HOST;
+  var SHARE_W = 1080, SHARE_H = 1350, SHARE_URL_TIMEOUT_MS = 1500;
+  var SHARE = { last: null, busy: false, canvas: null };
+  function shareUrl() {
+    var fallback = SHARE_URL_DEFAULT;
+    if (cgActive()) return Promise.resolve(cgAdapter.inviteLink() || fallback);
+    if (pokiActive() && window.PokiSDK && typeof window.PokiSDK.shareableURL === 'function') {
+      return new Promise(function (resolve) {
+        var done = false, t = setTimeout(function () { if (!done) { done = true; resolve(fallback); } }, SHARE_URL_TIMEOUT_MS);
+        var settle = function (u) { if (done) return; done = true; clearTimeout(t); resolve(typeof u === 'string' && u ? u : fallback); };
+        try { Promise.resolve(window.PokiSDK.shareableURL({})).then(settle, function () { settle(null); }); } catch (e) { settle(null); }
+      });
+    }
+    return Promise.resolve(fallback);
+  }
+  /* the numbers on the card, from the save (progress / perfect / daily), never from the DOM */
+  function shareData(where, url) {
+    where = where === 'levels' ? 'levels' : 'win';
+    var w1 = progress.worldSummary(1), next = progress.nextLevel() || { world: 1, level: WORLD_LEVELS };
+    var levels = [], perfectTotal = 0, l;
+    for (l = 1; l <= WORLD_LEVELS; l++) {
+      var won = progress.isWon(1, l);
+      levels.push({ n: l, won: won, stars: won ? progress.stars(1, l) : 0, cur: where === 'win' ? l === S.level : (next.world === 1 && next.level === l), unlocked: progress.isUnlocked(1, l), skipped: progress.isSkipped(1, l) });
+      perfectTotal += perfectSaved(l);
+    }
+    var hist = daily.history(), dailyBest = 0;
+    for (l = 0; l < hist.length; l++) if (hist[l].best > dailyBest) dailyBest = hist[l].best;
+    var r = S.lastResult || {};
+    return {
+      where: where, url: url || SHARE_URL_DEFAULT, skin: shop.item(shop.equipped()).data,
+      level: where === 'win' ? S.level : w1.won, stars: where === 'win' ? (r.stars | 0) : w1.stars,
+      levelsWon: w1.won, totalStars: w1.stars, maxStars: WORLD_LEVELS * 3, perfectTotal: perfectTotal, dailyBest: dailyBest, levels: levels,
+      headline: where === 'win' ? 'World 1 \u00b7 Level ' + S.level + ' cleared' : 'Level ' + w1.won + '/' + WORLD_LEVELS + ' \u00b7 ' + w1.stars + ' star' + (w1.stars === 1 ? '' : 's')
+    };
+  }
+  function shareTextBody(d) {
+    var first = d.where === 'win' ? 'I cleared level ' + d.level + ' of ' + GAME_TITLE + ' with ' + d.stars + ' star' + (d.stars === 1 ? '' : 's') + '.'
+      : 'I cleared ' + d.levelsWon + '/' + WORLD_LEVELS + ' levels of ' + GAME_TITLE + ' with ' + d.totalStars + '/' + d.maxStars + ' stars.';
+    return first + ' Hold to become a ghost, release to grab the coins. Can you beat it?';
+  }
+  function shareText(d) { return shareTextBody(d) + ' ' + d.url; }
+  /* ---- card drawing helpers (offscreen ctx) ---- */
+  function rrect(x, y, w, h, r) {
+    ctx.beginPath(); ctx.moveTo(x + r, y); ctx.lineTo(x + w - r, y); ctx.quadraticCurveTo(x + w, y, x + w, y + r); ctx.lineTo(x + w, y + h - r);
+    ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h); ctx.lineTo(x + r, y + h); ctx.quadraticCurveTo(x, y + h, x, y + h - r); ctx.lineTo(x, y + r);
+    ctx.quadraticCurveTo(x, y, x + r, y); ctx.closePath();
+  }
+  function drawStar(x, y, r, on, dark) {
+    ctx.beginPath();
+    for (var j = 0; j < 10; j++) { var rr = j % 2 ? r * 0.45 : r, an = -Math.PI / 2 + j * Math.PI / 5; ctx.lineTo(x + Math.cos(an) * rr, y + Math.sin(an) * rr); }
+    ctx.closePath();
+    if (on) { ctx.fillStyle = dark ? '#0B1020' : PAL.coin; ctx.shadowColor = PAL.coin; ctx.shadowBlur = dark ? 0 : 10; ctx.fill(); ctx.shadowBlur = 0; }
+    else { ctx.fillStyle = dark ? 'rgba(11,16,32,.25)' : 'rgba(232,241,255,.12)'; ctx.fill(); ctx.strokeStyle = dark ? 'rgba(11,16,32,.4)' : 'rgba(232,241,255,.35)'; ctx.lineWidth = 1.5; ctx.stroke(); }
+  }
+  function spacedText(text, x, y, spacing) {
+    var w = 0, i;
+    for (i = 0; i < text.length; i++) w += ctx.measureText(text[i]).width + (i < text.length - 1 ? spacing : 0);
+    var cx = x - w / 2, prev = ctx.textAlign; ctx.textAlign = 'left';
+    for (i = 0; i < text.length; i++) { ctx.fillText(text[i], cx, y); cx += ctx.measureText(text[i]).width + spacing; }
+    ctx.textAlign = prev;
+  }
+  function renderShareCanvas(d) {
+    var c = SHARE.canvas;
+    if (!c) { c = SHARE.canvas = document.createElement('canvas'); c.width = SHARE_W; c.height = SHARE_H; }
+    var prev = ctx, W = SHARE_W, H = SHARE_H, FONT = 'system-ui, -apple-system, "Segoe UI", sans-serif';
+    ctx = c.getContext('2d');
+    ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.globalAlpha = 1; ctx.textBaseline = 'alphabetic';
+    ctx.fillStyle = PAL.bg; ctx.fillRect(0, 0, W, H);
+    var ppb = BEAT_W * W;
+    drawCircuit(CIRCUIT_BACK, W, H, ppb, 3.1, 0.22, 3);
+    drawCircuit(CIRCUIT_FRONT, W, H, ppb, 7.4, 0.35, 2);
+    /* soft glows : cyan behind the scene, magenta bottom-left */
+    var g = ctx.createRadialGradient(W * 0.42, 520, 20, W * 0.42, 520, 520);
+    g.addColorStop(0, 'rgba(0,240,255,.16)'); g.addColorStop(1, 'rgba(0,240,255,0)');
+    ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+    g = ctx.createRadialGradient(80, H - 120, 10, 80, H - 120, 520);
+    g.addColorStop(0, 'rgba(255,45,149,.14)'); g.addColorStop(1, 'rgba(255,45,149,0)');
+    ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+    /* title block */
+    ctx.textAlign = 'center';
+    ctx.font = '900 104px ' + FONT; ctx.fillStyle = PAL.player; ctx.shadowColor = 'rgba(0,240,255,.75)'; ctx.shadowBlur = 34;
+    spacedText('HOLLOW RUN', W / 2, 168, 22);
+    ctx.shadowBlur = 0;
+    ctx.font = '600 22px ' + FONT; ctx.fillStyle = 'rgba(232,241,255,.6)';
+    spacedText(STUDIO_NAME.toUpperCase(), W / 2, 212, 7);
+    /* headline pill */
+    ctx.font = '700 44px ' + FONT;
+    var hw = ctx.measureText(d.headline).width + 90;
+    rrect(W / 2 - hw / 2, 252, hw, 74, 37); ctx.fillStyle = 'rgba(19,27,51,.9)'; ctx.fill(); ctx.strokeStyle = PAL.decor; ctx.lineWidth = 2; ctx.stroke();
+    ctx.fillStyle = PAL.ui; ctx.fillText(d.headline, W / 2, 304);
+    /* scene band : wall, spectre with the equipped skin, coins, field, rail */
+    var top = 372, bot = 622, lineY = 500, r = 84;
+    ctx.save(); rrect(28, top - 10, W - 56, bot - top + 20, 26); ctx.clip();
+    ctx.fillStyle = 'rgba(11,16,32,.55)'; ctx.fillRect(0, top - 10, W, bot - top + 20);
+    drawRail(W, lineY + r * 1.15, ppb, 2.35, r);
+    drawWall(96, 176, top, bot, false, false, false);
+    drawField(W - 190, W - 70, top, bot, false, false, 0);
+    for (var k = 0; k < 3; k++) drawCoin(640 + k * 92, lineY - r * 0.9 - (k === 1 ? 14 : 0), r * 0.34, k);
+    for (k = 1; k <= 7; k++) drawTrailBit(d.skin, 420 - k * 38, lineY + r * 0.15 + Math.sin(k * 1.3) * 10, Math.max(3, 15 - k * 1.7), k, false);
+    drawSpeedLines(420, lineY, r, false);
+    drawSpectre(420, lineY, r, d.skin, false, 0);
+    ctx.restore();
+    ctx.strokeStyle = 'rgba(61,90,254,.5)'; ctx.lineWidth = 2; rrect(28, top - 10, W - 56, bot - top + 20, 26); ctx.stroke();
+    /* 12 level pills : 6 x 2, rounded, 3 stars each, current level highlighted */
+    var pw = 156, ph = 118, gap = 14, gx = (W - (6 * pw + 5 * gap)) / 2, gy = 672;
+    for (k = 0; k < d.levels.length; k++) {
+      var lv = d.levels[k], px = gx + (k % 6) * (pw + gap), py = gy + Math.floor(k / 6) * (ph + gap);
+      rrect(px, py, pw, ph, 22);
+      if (lv.cur) { ctx.fillStyle = PAL.player; ctx.shadowColor = PAL.player; ctx.shadowBlur = 26; ctx.fill(); ctx.shadowBlur = 0; }
+      else { ctx.fillStyle = lv.unlocked ? 'rgba(19,27,51,.92)' : 'rgba(19,27,51,.5)'; ctx.fill(); ctx.strokeStyle = lv.won ? PAL.player : (lv.skipped ? PAL.obstacle : (lv.unlocked ? PAL.decor : 'rgba(61,90,254,.35)')); ctx.lineWidth = lv.won ? 3 : 2; ctx.stroke(); }
+      ctx.font = '800 44px ' + FONT; ctx.textAlign = 'center';
+      ctx.fillStyle = lv.cur ? PAL.bg : (lv.unlocked ? PAL.ui : 'rgba(232,241,255,.3)');
+      ctx.fillText(String(lv.n), px + pw / 2, py + 58);
+      for (var s = 0; s < 3; s++) drawStar(px + pw / 2 + (s - 1) * 34, py + 90, 13, s < lv.stars, lv.cur);
+    }
+    /* counters */
+    var cy = 964, cw = 300, cgap = 24, cx0 = (W - (3 * cw + 2 * cgap)) / 2;
+    var counters = [['STARS', d.totalStars + '/' + d.maxStars, PAL.coin], ['PERFECT', String(d.perfectTotal), PAL.player], ['BEST DAILY', d.dailyBest ? String(d.dailyBest) : '\u2014', PAL.obstacle]];
+    for (k = 0; k < 3; k++) {
+      var bx = cx0 + k * (cw + cgap);
+      rrect(bx, cy, cw, 112, 24); ctx.fillStyle = 'rgba(19,27,51,.9)'; ctx.fill(); ctx.strokeStyle = 'rgba(61,90,254,.6)'; ctx.lineWidth = 2; ctx.stroke();
+      ctx.font = '700 20px ' + FONT; ctx.fillStyle = 'rgba(232,241,255,.65)'; spacedText(counters[k][0], bx + cw / 2, cy + 36, 4);
+      ctx.font = '800 46px ' + FONT; ctx.fillStyle = counters[k][2]; ctx.shadowColor = counters[k][2]; ctx.shadowBlur = 14;
+      if (k === 0) { drawStar(bx + cw / 2 - ctx.measureText(counters[k][1]).width / 2 - 30, cy + 78, 18, true, false); ctx.fillStyle = counters[k][2]; ctx.fillText(counters[k][1], bx + cw / 2 + 18, cy + 92); }
+      else ctx.fillText(counters[k][1], bx + cw / 2, cy + 92);
+      ctx.shadowBlur = 0;
+    }
+    /* call to action + URL */
+    ctx.font = '600 34px ' + FONT; ctx.fillStyle = 'rgba(232,241,255,.85)'; ctx.fillText('Can you beat it? Play free:', W / 2, 1160);
+    ctx.font = '800 50px ' + FONT; ctx.fillStyle = '#FFFFFF'; ctx.shadowColor = 'rgba(0,240,255,.8)'; ctx.shadowBlur = 22;
+    ctx.fillText(d.url.replace(/^https?:\/\//, '').replace(/\/$/, ''), W / 2, 1226); ctx.shadowBlur = 0;
+    ctx.font = '600 20px ' + FONT; ctx.fillStyle = 'rgba(232,241,255,.5)';
+    spacedText(STUDIO_NAME.toUpperCase() + '  \u00b7  ONE BUTTON. HOLD TO BECOME A GHOST.', W / 2, 1306, 4);
+    ctx.textAlign = 'left';
+    ctx = prev;
+    return c;
+  }
+  function renderShareCard(where, url) { return renderShareCanvas(shareData(where, url)).toDataURL('image/png'); }
+  function dataUrlToBlob(u) {
+    var i = u.indexOf(','), bin = atob(u.slice(i + 1)), arr = new Uint8Array(bin.length);
+    for (var k = 0; k < bin.length; k++) arr[k] = bin.charCodeAt(k);
+    return new Blob([arr], { type: 'image/png' });
+  }
+  var toastTimer = null;
+  function toast(msg) {
+    var el = $('toast'); el.textContent = msg; el.classList.add('on');
+    clearTimeout(toastTimer); toastTimer = setTimeout(function () { el.classList.remove('on'); }, 2600);
+  }
+  function copyText(text) {
+    if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+      try { return Promise.resolve(navigator.clipboard.writeText(text)).then(function () { return true; }, function () { return false; }); } catch (e) { }
+    }
+    try {
+      var ta = document.createElement('textarea'); ta.value = text; ta.setAttribute('readonly', ''); ta.style.position = 'fixed'; ta.style.opacity = '0';
+      document.body.appendChild(ta); ta.select(); var ok = document.execCommand('copy'); document.body.removeChild(ta);
+      return Promise.resolve(!!ok);
+    } catch (e) { return Promise.resolve(false); }
+  }
+  function downloadBlob(blob, name) {
+    var a = document.createElement('a'), u = URL.createObjectURL(blob);
+    a.href = u; a.download = name; a.style.display = 'none'; document.body.appendChild(a); a.click();
+    setTimeout(function () { document.body.removeChild(a); URL.revokeObjectURL(u); }, 1000);
+  }
+  function share(where) {
+    if (SHARE.busy) return Promise.resolve(null);
+    SHARE.busy = true;
+    var btns = [$('btnShare'), $('btnShareLevels')];
+    btns.forEach(function (b) { b.disabled = true; });
+    function release() { SHARE.busy = false; btns.forEach(function (b) { b.disabled = false; }); }
+    return shareUrl().then(function (url) {
+      var d = shareData(where, url), dataUrl = renderShareCanvas(d).toDataURL('image/png'), blob = dataUrlToBlob(dataUrl);
+      var name = 'hollow-run-' + (d.where === 'win' ? 'level-' + d.level : 'progress') + '.png', file = null;
+      try { file = new File([blob], name, { type: 'image/png' }); } catch (e) { }
+      function done(method) {
+        SHARE.last = { where: d.where, method: method, url: url, level: d.level, stars: d.stars, text: shareText(d), file: name };
+        if (method !== 'cancel') T('share', { where: d.where, method: method });
+        return SHARE.last;
+      }
+      function fallback() {
+        downloadBlob(blob, name);
+        return copyText(shareText(d)).then(function (copied) { toast(copied ? 'Image saved, link copied' : 'Image saved'); return done('download'); });
+      }
+      if (file && navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
+        return navigator.share({ title: GAME_TITLE, text: shareTextBody(d), url: url, files: [file] })
+          .then(function () { return done('native'); }, function (err) { return err && err.name === 'AbortError' ? done('cancel') : fallback(); });
+      }
+      return fallback();
+    }).then(function (r) { release(); return r; }, function () { release(); return null; });
+  }
+  $('btnShare').onclick = function () { sfx('click'); share('win'); };
+  $('btnShareLevels').onclick = function () { audio.unlock(); sfx('click'); share('levels'); };
+
   function openPanel(html) { $('panel').innerHTML = html + '<div class="btns"><button id="btnClose">Close</button></div>'; show('panel', true); $('btnClose').onclick = closePanel; }
   function closePanel() { show('panel', false); ui(); }
   function openShop() {
@@ -3779,7 +4089,7 @@
       var act;
       if (it.owned) act = shop.equipped() === it.id ? '<button disabled>Equipped</button>' : '<button class="pri" data-equip="' + it.id + '">Equip</button>';
       else if (it.unlock.type === 'coins') act = '<button data-buy="' + it.id + '"' + (economy.canAfford(it.unlock.value) ? ' class="pri"' : ' disabled') + '>' + it.unlock.value + ' coins</button>';
-      else if (it.unlock.type === 'ad') act = '<button data-ad="' + it.id + '"' + (Ads.canRequest('skin') ? '' : ' disabled') + '>' + adLabel('Watch ad') + '</button>';
+      else if (it.unlock.type === 'ad') act = rewardedBlocked() ? '<button disabled>Ad blocked</button>' : '<button data-ad="' + it.id + '"' + (Ads.canRequest('skin') ? '' : ' disabled') + '>' + adLabel('Watch ad') + '</button>';
       else act = '<button disabled>' + Math.round(shop.progressOf(it.id) * 100) + '%</button>';
       html += '<div class="card"><i class="sw" style="background:' + it.data.body + ';border-color:' + (it.data.outline || it.data.trail) + '"></i><div class="lbl">' + it.label + '<small>' + it.data.desc + '</small></div>' + act + '</div>';
     });
@@ -3901,7 +4211,7 @@
 
   /* tab hidden / window blur while playing = a pause for Poki (gameplayStop, then gameplayStart when the tab is back) ;
      the 'test' (hook) and 'ad' (ad gate) pauses are not gameplay interruptions of that kind */
-  function loopPauseWhy(why) { return why !== 'test' && why !== 'ad'; }
+  function loopPauseWhy(why) { return why !== 'test' && why !== 'ad' && !cgActive(); }   /* CrazyGames handles focus loss itself */
   var loop = GC.Loop.create({ update: update, render: render,
     onPause: function (why) { if (loopPauseWhy(why) && S.mode === 'play') Ads.gameplayStop(); },
     onResume: function (why) { if (loopPauseWhy(why) && S.mode === 'play') Ads.gameplayStart(); } });
@@ -3910,6 +4220,7 @@
   ui();
   loop.start();
   if (window.HR_PORTAL === 'poki') pokiActivate();
+  if (window.HR_PORTAL === 'crazygames') cgActivate();
 
   /* =================== 7. test hook =================== */
   if (TEST) {
@@ -3973,7 +4284,13 @@
       die: function (cause) { die(cause || 'wall', null); },
       win: win, retry: retry, toMenu: toMenu, ui: ui,
       /* Poki SDK (portal build) : ad gate + adapter state ; adapter is 'stub' unless HR_PORTAL === 'poki' and PokiSDK.init() resolved */
-      adState: function () { return { active: AD.active, prevMuted: AD.prevMuted, pausedLoop: AD.pausedLoop, adapter: Ads.adapter() ? Ads.adapter().name : null, poki: pokiActive(), pokiPlaying: pokiAdapter ? pokiAdapter.playing() : null, portal: window.HR_PORTAL || null }; },
+      adState: function () { return { active: AD.active, muted: AD.muted, prevMuted: AD.prevMuted, pausedLoop: AD.pausedLoop, adapter: Ads.adapter() ? Ads.adapter().name : null, poki: pokiActive(), pokiPlaying: pokiAdapter ? pokiAdapter.playing() : null, crazygames: cgActive(), cgPlaying: cgAdapter ? cgAdapter.playing() : null, adblock: rewardedBlocked(), portal: window.HR_PORTAL || null }; },
+      /* share (17.3) : the card as a PNG dataURL, the numbers it used, the text, the URL, the whole flow, the last result */
+      renderShareCard: function (where, url) { return renderShareCard(where, url); },
+      shareCard: function (where, url) { var d = shareData(where, url); delete d.skin; return d; },
+      shareText: function (where, url) { return shareText(shareData(where, url)); },
+      shareUrl: shareUrl, share: share, shareLast: function () { return SHARE.last; },
+      SHARE_URL_DEFAULT: SHARE_URL_DEFAULT,
       telemetryQueue: function () { return GC.Telemetry && GC.Telemetry.__test__ ? GC.Telemetry.__test__.queue() : []; },
       flushTelemetry: function () { if (GC.Telemetry && GC.Telemetry.flush) GC.Telemetry.flush(); }
     };
