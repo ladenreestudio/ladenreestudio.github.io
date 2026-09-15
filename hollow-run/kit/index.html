@@ -1,0 +1,549 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Share Hollow Run — share kit &amp; press kit · La Denrée Studio</title>
+<meta name="description" content="Everything you need to share Hollow Run: covers, an invitation card, an animated preview, ready-to-copy texts in English and French, and a one-tap Share button. Free one-button browser game by La Denrée Studio.">
+<meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#0B1020">
+<link rel="canonical" href="https://ladenreestudio.github.io/hollow-run/kit/">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="La Denrée Studio">
+<meta property="og:title" content="Share Hollow Run — share kit &amp; press kit">
+<meta property="og:description" content="Covers, invitation card, animated preview and ready-to-copy texts (EN/FR) to send Hollow Run to a friend or write about it. One button, free in your browser.">
+<meta property="og:url" content="https://ladenreestudio.github.io/hollow-run/kit/">
+<meta property="og:image" content="https://ladenreestudio.github.io/hollow-run/assets/og-cover.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Hollow Run cover: a cyan ghost running along a neon circuit rail through magenta walls, golden coins bursting out">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Share Hollow Run — share kit">
+<meta name="twitter:description" content="Images and texts ready to copy. Hold to become a ghost. Release to grab the coins.">
+<meta name="twitter:image" content="https://ladenreestudio.github.io/hollow-run/assets/og-cover.png">
+<link rel="icon" type="image/png" sizes="64x64" href="../../assets/favicon.png">
+<link rel="apple-touch-icon" href="../../assets/logo-mark.png">
+<style>
+  :root {
+    --bg: #0B1020;
+    --bg-2: #0F1630;
+    --cyan: #00F0FF;
+    --magenta: #FF2D95;
+    --yellow: #FFD60A;
+    --indigo: #3D5AFE;
+    --ui: #E8F1FF;
+    --muted: #9AA8C7;
+    --line: rgba(61, 90, 254, 0.28);
+    --radius: 14px;
+    --max: 1040px;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ui);
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, Ubuntu, Cantarell, "Helvetica Neue", Arial, sans-serif;
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+  #circuit {
+    position: fixed; inset: 0; z-index: 0;
+    width: 100%; height: 100%;
+    pointer-events: none;
+  }
+  .page { position: relative; z-index: 1; }
+  a { color: var(--cyan); text-decoration: none; }
+  a:hover, a:focus-visible { text-decoration: underline; }
+  :focus-visible { outline: 2px solid var(--yellow); outline-offset: 3px; }
+  .wrap { max-width: var(--max); margin: 0 auto; padding: 0 20px; }
+
+  /* Header */
+  header.top {
+    display: flex; align-items: center; justify-content: space-between; gap: 16px;
+    padding: 18px 0;
+  }
+  .brand { display: flex; align-items: center; gap: 12px; color: var(--ui); }
+  .brand img { height: 44px; width: auto; display: block; }
+  .brand .name { font-weight: 700; font-size: 1.15rem; letter-spacing: 0.01em; }
+  .brand .name .accent { color: var(--cyan); text-shadow: 0 0 10px rgba(0, 240, 255, 0.7); }
+  nav.menu { display: flex; gap: 18px; font-size: 0.95rem; }
+  nav.menu a { color: var(--muted); }
+  nav.menu a:hover { color: var(--ui); }
+
+  /* Hero */
+  .hero { padding: 40px 0 10px; text-align: center; }
+  .hero .kicker { display: inline-block; font-size: 0.72rem; letter-spacing: 0.18em; text-transform: uppercase;
+    color: var(--magenta); font-weight: 700; margin-bottom: 10px; }
+  .hero h1 {
+    font-size: clamp(2rem, 5.5vw, 3.2rem);
+    line-height: 1.08; margin: 0 0 10px; font-weight: 800; letter-spacing: 0.04em;
+    color: var(--cyan); text-shadow: 0 0 18px rgba(0, 240, 255, 0.55);
+  }
+  .hero .sub { color: var(--ui); font-size: clamp(1.02rem, 2.2vw, 1.25rem); margin: 0 auto 26px; max-width: 680px; }
+  .hero .sub a { color: var(--cyan); }
+  .share-box { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 12px 18px; }
+  .share-box .hint { color: var(--muted); font-size: 0.9rem; margin: 0; flex-basis: 100%; }
+
+  /* Sections */
+  section { padding: 36px 0; }
+  h2 { font-size: clamp(1.4rem, 3vw, 1.9rem); margin: 0 0 18px; }
+  h2 .tag { display: inline-block; font-size: 0.7rem; letter-spacing: 0.18em; text-transform: uppercase;
+    color: var(--magenta); margin-right: 10px; vertical-align: middle; font-weight: 700; }
+  .lead { color: var(--muted); margin: -8px 0 20px; max-width: 760px; }
+  .card {
+    background: linear-gradient(180deg, rgba(15, 22, 48, 0.92), rgba(11, 16, 32, 0.92));
+    border: 1px solid var(--line); border-radius: var(--radius);
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.35);
+  }
+  .btns { display: flex; flex-wrap: wrap; gap: 12px; }
+  .btn {
+    display: inline-flex; align-items: center; gap: 8px; padding: 12px 20px; border-radius: 10px;
+    font-weight: 700; font-size: 0.98rem; border: 1px solid transparent; transition: transform .12s ease, box-shadow .12s ease;
+    font-family: inherit; line-height: 1.3; cursor: pointer;
+  }
+  .btn:hover { text-decoration: none; transform: translateY(-1px); }
+  .btn.primary { background: var(--cyan); color: #04101a; box-shadow: 0 0 22px rgba(0, 240, 255, 0.35); }
+  .btn.primary:hover { box-shadow: 0 0 30px rgba(0, 240, 255, 0.55); }
+  .btn.ghost { color: var(--ui); border-color: rgba(232, 241, 255, 0.35); background: rgba(232, 241, 255, 0.04); }
+  .btn.ghost:hover { border-color: var(--magenta); color: #fff; box-shadow: 0 0 18px rgba(255, 45, 149, 0.35); }
+  .btn.big { padding: 16px 28px; font-size: 1.1rem; }
+  .btn svg { width: 18px; height: 18px; fill: currentColor; flex: none; }
+  .btn.small { padding: 8px 14px; font-size: 0.88rem; border-radius: 8px; }
+  .btn.done { border-color: var(--yellow); color: var(--yellow); box-shadow: 0 0 16px rgba(255, 214, 10, 0.3); }
+
+  /* Images */
+  .grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; align-items: start; }
+  .grid figure { margin: 0; display: flex; flex-direction: column; overflow: hidden; }
+  .grid figure.portrait { grid-row: span 2; }
+  .grid .pic { background: #060a16; border-bottom: 1px solid var(--line); display: grid; place-items: center; }
+  .grid .pic img { width: 100%; height: auto; display: block; }
+  .grid figcaption { padding: 14px 16px 16px; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 14px; }
+  .grid figcaption .meta { flex: 1 1 200px; }
+  .grid figcaption b { display: block; color: var(--ui); }
+  .grid figcaption span { color: var(--muted); font-size: 0.88rem; }
+  .grid figcaption .dl { display: flex; gap: 8px; flex-wrap: wrap; }
+
+  /* Texts */
+  .lang { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; }
+  .lang h3 { grid-column: 1 / -1; margin: 6px 0 -4px; font-size: 1.05rem; color: var(--muted); font-weight: 600; letter-spacing: 0.04em; }
+  .lang h3 b { color: var(--ui); }
+  .txt { padding: 16px 16px 14px; display: flex; flex-direction: column; gap: 10px; }
+  .txt .head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+  .txt .head b { font-size: 0.95rem; }
+  .txt .head b small { color: var(--muted); font-weight: 400; margin-left: 6px; }
+  .txt pre {
+    margin: 0; padding: 12px 14px; border-radius: 10px; border: 1px solid var(--line);
+    background: rgba(6, 10, 22, 0.7); color: var(--ui); font: 0.92rem/1.5 inherit;
+    font-family: inherit; white-space: pre-wrap; word-wrap: break-word; overflow-wrap: anywhere; user-select: all; -webkit-user-select: all;
+  }
+  .txt pre.long { font-size: 0.88rem; }
+  .txt.wide { grid-column: 1 / -1; }
+
+  /* Links */
+  .links { padding: 22px; }
+  .links ul { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px 24px; }
+  .links li { border-bottom: 1px solid var(--line); padding: 8px 0; display: flex; flex-wrap: wrap; justify-content: space-between; gap: 6px 14px; }
+  .links li span { color: var(--muted); }
+  .links li a { overflow-wrap: anywhere; }
+
+  /* Toast */
+  #toast {
+    position: fixed; left: 50%; bottom: 28px; transform: translate(-50%, 20px); z-index: 10;
+    padding: 12px 18px; border-radius: 10px; background: #0f1630; color: var(--ui); border: 1px solid var(--cyan);
+    box-shadow: 0 0 24px rgba(0, 240, 255, 0.35); font-weight: 600; font-size: 0.95rem;
+    opacity: 0; pointer-events: none; transition: opacity .18s ease, transform .18s ease; max-width: calc(100vw - 40px); text-align: center;
+  }
+  #toast.show { opacity: 1; transform: translate(-50%, 0); }
+
+  /* Footer */
+  footer { padding: 34px 0 44px; color: var(--muted); font-size: 0.92rem; border-top: 1px solid var(--line); margin-top: 24px; }
+  footer .cols { display: flex; flex-wrap: wrap; gap: 18px 36px; justify-content: space-between; align-items: flex-start; }
+  footer ul { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 8px 18px; }
+  footer a { color: var(--muted); }
+  footer a:hover { color: var(--cyan); }
+  footer .mark { display: flex; align-items: center; gap: 10px; }
+  footer .mark img { width: 30px; height: 30px; }
+  footer .legal { margin-top: 18px; display: flex; flex-wrap: wrap; gap: 8px 18px; }
+
+  @media (max-width: 760px) {
+    nav.menu { display: none; }
+    .hero { padding: 26px 0 8px; }
+    .grid, .lang, .links ul { grid-template-columns: 1fr; }
+    .grid figure.portrait { grid-row: auto; }
+    .btn { width: 100%; justify-content: center; }
+    .btn.small { width: auto; }
+    .grid figcaption .dl { width: 100%; }
+    .grid figcaption .dl .btn { flex: 1; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    html { scroll-behavior: auto; }
+    .btn, #toast { transition: none; }
+  }
+</style>
+</head>
+<body>
+<canvas id="circuit" aria-hidden="true"></canvas>
+
+<div class="page">
+  <div class="wrap">
+    <header class="top">
+      <a class="brand" href="../../" aria-label="La Denrée Studio — home">
+        <img src="../../assets/logo-mark.png" alt="" width="44" height="44">
+        <span class="name">La Denr<span class="accent">é</span>e Studio</span>
+      </a>
+      <nav class="menu" aria-label="Sections">
+        <a href="../">&larr; Game page</a>
+        <a href="#images">Images</a>
+        <a href="#texts">Texts</a>
+        <a href="#links">Links</a>
+      </nav>
+    </header>
+
+    <main id="top">
+      <section class="hero" id="share">
+        <span class="kicker">Share kit · press kit</span>
+        <h1>Share Hollow Run</h1>
+        <p class="sub">Liked the game? Send it to a friend in one tap, or grab an image and a ready-made text below. Writing about it? Everything on this page is free to use. <a href="../">Back to the game</a>.</p>
+        <div class="share-box">
+          <button class="btn primary big" type="button" id="btn-share">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 16a3 3 0 0 0-2.2 1l-7-4.1a3 3 0 0 0 0-1.8l7-4.1A3 3 0 1 0 15 5a3 3 0 0 0 .1.7l-7 4.1a3 3 0 1 0 0 4.4l7 4.1A3 3 0 1 0 18 16z"/></svg>
+            Share this game
+          </button>
+          <p class="hint">Opens your phone's share sheet. On desktop, it copies the text and the link instead.</p>
+        </div>
+      </section>
+
+      <section id="images">
+        <h2><span class="tag">Images</span>Pick a picture</h2>
+        <p class="lead">Each image is under 300 KB, ready for a chat, a post or an article. The invitation card (4:5) fits every social feed; the 16:9 cover fits a message preview or a video thumbnail.</p>
+        <div class="grid">
+          <figure class="card portrait" id="img-invite">
+            <div class="pic"><img src="assets/invite-card.webp" alt="Invitation card: the cyan ghost running through a magenta wall while coins burst out, then ONE BUTTON. Hold to become a ghost. Release to grab the coins. ladenreestudio.github.io/hollow-run" width="1080" height="1350" loading="lazy"></div>
+            <figcaption>
+              <div class="meta"><b>Invitation card</b><span>1080 &times; 1350 · 4:5 · WebP or PNG</span></div>
+              <div class="dl">
+                <a class="btn ghost small" href="assets/invite-card.webp" download="hollow-run-invite.webp">Download WebP</a>
+                <a class="btn ghost small" href="assets/invite-card.png" download="hollow-run-invite.png">Download PNG</a>
+              </div>
+            </figcaption>
+          </figure>
+          <figure class="card" id="img-preview">
+            <div class="pic"><img src="assets/preview.webp" alt="Animated preview of Hollow Run: the ghost grabs a battery then fires the Surge on level 8" width="480" height="270" loading="lazy"></div>
+            <figcaption>
+              <div class="meta"><b>Animated preview</b><span>480 &times; 270 · 7 s loop · animated WebP</span></div>
+              <div class="dl"><a class="btn ghost small" href="assets/preview.webp" download="hollow-run-preview.webp">Download</a></div>
+            </figcaption>
+          </figure>
+          <figure class="card" id="img-cover-title">
+            <div class="pic"><img src="assets/cover-16x9-title.webp" alt="Hollow Run cover 16:9 with the title: a cyan ghost running along a neon circuit rail, passing through magenta walls while golden coins burst out" width="1200" height="675" loading="lazy"></div>
+            <figcaption>
+              <div class="meta"><b>Cover 16:9, with title</b><span>1200 &times; 675 · WebP</span></div>
+              <div class="dl"><a class="btn ghost small" href="assets/cover-16x9-title.webp" download="hollow-run-cover-title.webp">Download</a></div>
+            </figcaption>
+          </figure>
+          <figure class="card" id="img-cover">
+            <div class="pic"><img src="assets/cover-16x9.webp" alt="Hollow Run cover 16:9 without title: the cyan ghost, the magenta wall and the coins" width="1200" height="675" loading="lazy"></div>
+            <figcaption>
+              <div class="meta"><b>Cover 16:9, no title</b><span>1200 &times; 675 · WebP · room for your own text</span></div>
+              <div class="dl"><a class="btn ghost small" href="assets/cover-16x9.webp" download="hollow-run-cover.webp">Download</a></div>
+            </figcaption>
+          </figure>
+          <figure class="card" id="img-square">
+            <div class="pic"><img src="assets/cover-square.webp" alt="Hollow Run square cover without title: the ghost passing a magenta wall on a cyan circuit rail, golden coins around" width="1200" height="1200" loading="lazy"></div>
+            <figcaption>
+              <div class="meta"><b>Square cover, no title</b><span>1200 &times; 1200 · WebP · avatar, Instagram post</span></div>
+              <div class="dl"><a class="btn ghost small" href="assets/cover-square.webp" download="hollow-run-square.webp">Download</a></div>
+            </figcaption>
+          </figure>
+        </div>
+      </section>
+
+      <section id="texts">
+        <h2><span class="tag">Texts to copy</span>Say it in one line, or in full</h2>
+        <p class="lead">Tap <b>Copy</b>, then paste. Short for a message, medium for a mail or a forum post, long for an article.</p>
+        <div class="lang">
+          <h3><b>English</b></h3>
+          <div class="card txt">
+            <div class="head"><b>Short<small>SMS · WhatsApp</small></b><button class="btn ghost small copy" type="button" data-target="txt-en-short">Copy</button></div>
+            <pre id="txt-en-short">Try Hollow Run: one button, hold to become a ghost. Free in your browser: https://ladenreestudio.github.io/hollow-run/</pre>
+          </div>
+          <div class="card txt">
+            <div class="head"><b>Medium<small>mail · forum</small></b><button class="btn ghost small copy" type="button" data-target="txt-en-medium">Copy</button></div>
+            <pre id="txt-en-medium">Hollow Run is a small one-button rhythm runner. Hold to become a ghost and pass through the magenta walls, release to become solid again and grab the golden coins. 12 levels with a rising tempo, a new Daily Line every day, PERFECT timing and a SURGE super-power. Free, in your browser, no account, no download, on phone and desktop.
+
+Play: https://ladenreestudio.github.io/hollow-run/
+Video: https://youtu.be/ODXoWccrQzY</pre>
+          </div>
+          <div class="card txt wide">
+            <div class="head"><b>Long<small>press · article</small></b><button class="btn ghost small copy" type="button" data-target="txt-en-long">Copy</button></div>
+            <pre id="txt-en-long" class="long">Hollow Run is a one-button rhythm runner by La Denrée Studio. Your little cyan ghost runs along a glowing circuit rail at a tempo that rises level after level (120 to 168 BPM). Hold to become a ghost: you turn translucent and pass straight through the magenta walls. Release to become solid again: only a solid runner can collect the golden coins, and only a solid runner survives the crackling cyan fields. Your ghost gauge lasts 2.5 seconds, so every hold is a decision. Twelve hand-tuned lines, a fresh seeded Daily Line every day, PERFECT timing that doubles your coins and a SURGE super-power that smashes through everything. Short sessions, instant retry: easy to learn, hard to perfect.
+
+Fact sheet
+- Title: Hollow Run
+- Studio: La Denrée Studio (France)
+- Genre: arcade, rhythm runner, one button
+- Platform: HTML5, plays in the browser on phone, tablet and desktop; portrait and landscape
+- Controls: touch and hold, mouse or keyboard
+- Price: free, no account, no download, no data collected
+- Available: now (September 2026)
+- Play: https://ladenreestudio.github.io/hollow-run/
+- Also on itch.io: https://ladenreestudio.itch.io/hollow-run
+- Video: https://youtu.be/ODXoWccrQzY
+- Share kit / press kit: https://ladenreestudio.github.io/hollow-run/kit/
+- Contact: ladenree.studio@gmail.com
+- Social: @ladenreestudio on TikTok, Instagram, X and YouTube</pre>
+          </div>
+
+          <h3><b>Français</b></h3>
+          <div class="card txt">
+            <div class="head"><b>Court<small>SMS · WhatsApp</small></b><button class="btn ghost small copy" type="button" data-target="txt-fr-short">Copy</button></div>
+            <pre id="txt-fr-short" lang="fr">Essaie Hollow Run : un seul bouton, maintiens pour devenir fantôme. Gratuit dans ton navigateur : https://ladenreestudio.github.io/hollow-run/</pre>
+          </div>
+          <div class="card txt">
+            <div class="head"><b>Moyen<small>mail · forum</small></b><button class="btn ghost small copy" type="button" data-target="txt-fr-medium">Copy</button></div>
+            <pre id="txt-fr-medium" lang="fr">Hollow Run est un petit runner rythmique à un seul bouton. Maintiens pour devenir fantôme et traverser les murs magenta, relâche pour redevenir solide et ramasser les pièces dorées. 12 niveaux à tempo croissant, une Daily Line inédite chaque jour, le timing PERFECT et le super-pouvoir SURGE. Gratuit, dans le navigateur, sans compte ni téléchargement, sur téléphone et ordinateur.
+
+Jouer : https://ladenreestudio.github.io/hollow-run/
+Vidéo : https://youtu.be/ODXoWccrQzY</pre>
+          </div>
+          <div class="card txt wide">
+            <div class="head"><b>Long<small>presse · article</small></b><button class="btn ghost small copy" type="button" data-target="txt-fr-long">Copy</button></div>
+            <pre id="txt-fr-long" class="long" lang="fr">Hollow Run est un runner rythmique à un seul bouton, signé La Denrée Studio. Un petit fantôme cyan court sur un rail-circuit lumineux, à un tempo qui monte de niveau en niveau (120 à 168 BPM). Maintenir = fantôme : translucide, il traverse les murs magenta. Relâcher = solide : seul un coureur solide ramasse les pièces dorées et survit aux champs cyan. La jauge fantôme dure 2,5 s : chaque maintien est une décision. Douze lignes réglées à la main, une Daily Line inédite chaque jour, le timing PERFECT qui double les pièces et le super-pouvoir SURGE qui fracasse tout. Sessions courtes, retry instantané : facile à apprendre, dur à maîtriser.
+
+Fiche technique
+- Titre : Hollow Run
+- Studio : La Denrée Studio (France)
+- Genre : arcade, runner rythmique, un seul bouton
+- Plateforme : HTML5, jouable dans le navigateur sur téléphone, tablette et ordinateur ; portrait et paysage
+- Contrôles : toucher maintenu, souris ou clavier
+- Prix : gratuit, sans compte, sans téléchargement, aucune donnée collectée
+- Disponible : maintenant (septembre 2026)
+- Jouer : https://ladenreestudio.github.io/hollow-run/
+- Aussi sur itch.io : https://ladenreestudio.itch.io/hollow-run
+- Vidéo : https://youtu.be/ODXoWccrQzY
+- Share kit / dossier de presse : https://ladenreestudio.github.io/hollow-run/kit/
+- Contact : ladenree.studio@gmail.com
+- Réseaux : @ladenreestudio sur TikTok, Instagram, X et YouTube</pre>
+          </div>
+        </div>
+      </section>
+
+      <section id="links">
+        <h2><span class="tag">Links</span>Where to point people</h2>
+        <div class="card links">
+          <ul>
+            <li><span>Play the game</span><a id="link-game" href="https://ladenreestudio.github.io/hollow-run/">ladenreestudio.github.io/hollow-run</a></li>
+            <li><span>Studio site</span><a id="link-site" href="https://ladenreestudio.github.io/">ladenreestudio.github.io</a></li>
+            <li><span>Video</span><a id="link-video" href="https://youtu.be/ODXoWccrQzY" rel="noopener">youtu.be/ODXoWccrQzY</a></li>
+            <li><span>itch.io</span><a id="link-itch-game" href="https://ladenreestudio.itch.io/hollow-run" rel="noopener">ladenreestudio.itch.io/hollow-run</a></li>
+            <li><span>TikTok</span><a id="link-tiktok" href="https://www.tiktok.com/@ladenreestudio" rel="noopener">@ladenreestudio</a></li>
+            <li><span>Instagram</span><a id="link-instagram" href="https://www.instagram.com/ladenreestudio" rel="noopener">@ladenreestudio</a></li>
+            <li><span>X</span><a id="link-x" href="https://x.com/ladenreestudio" rel="noopener">@ladenreestudio</a></li>
+            <li><span>YouTube channel</span><a id="link-youtube" href="https://www.youtube.com/@ladenreestudio" rel="noopener">@ladenreestudio</a></li>
+            <li><span>Contact</span><a id="link-mail" href="mailto:ladenree.studio@gmail.com">ladenree.studio@gmail.com</a></li>
+            <li><span>This page</span><a id="link-kit" href="https://ladenreestudio.github.io/hollow-run/kit/">ladenreestudio.github.io/hollow-run/kit</a></li>
+          </ul>
+        </div>
+      </section>
+    </main>
+
+    <footer id="contact">
+      <div class="cols">
+        <div class="mark">
+          <img src="../../assets/logo-mark.png" alt="" width="30" height="30">
+          <span>La Denrée Studio · <a id="link-mail-footer" href="mailto:ladenree.studio@gmail.com">ladenree.studio@gmail.com</a></span>
+        </div>
+        <ul>
+          <li><a id="link-home" href="../../">Home</a></li>
+          <li><a id="link-game-page" href="../">Hollow Run</a></li>
+          <li><a id="link-itch" href="https://ladenreestudio.itch.io" rel="noopener">itch.io</a></li>
+          <li><a id="link-youtube-footer" href="https://www.youtube.com/@ladenreestudio" rel="noopener">YouTube</a></li>
+          <li><a id="link-github" href="https://github.com/ladenreestudio" rel="noopener">GitHub</a></li>
+          <li><a id="link-tiktok-footer" href="https://www.tiktok.com/@ladenreestudio" rel="noopener">TikTok</a></li>
+          <li><a id="link-instagram-footer" href="https://www.instagram.com/ladenreestudio" rel="noopener">Instagram</a></li>
+          <li><a id="link-x-footer" href="https://x.com/ladenreestudio" rel="noopener">X</a></li>
+        </ul>
+      </div>
+      <div class="legal">
+        <span>© 2026 La Denrée Studio</span>
+        <a id="link-privacy" href="../../privacy.html">Privacy</a>
+        <span>No cookies, no trackers, no data collected. Images and texts on this page may be reused freely to talk about the game.</span>
+      </div>
+    </footer>
+  </div>
+</div>
+<div id="toast" role="status" aria-live="polite"></div>
+
+<script>
+/* Share + copy. No external requests. */
+(function () {
+  var SHARE_URL = 'https://ladenreestudio.github.io/hollow-run/';
+  var SHARE_TITLE = 'Hollow Run';
+  var SHARE_TEXT = 'Try Hollow Run: one button, hold to become a ghost. Free in your browser.';
+  var toastEl = document.getElementById('toast');
+  var toastTimer = null;
+
+  function toast(msg) {
+    if (!toastEl) return;
+    toastEl.textContent = msg;
+    toastEl.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function () { toastEl.classList.remove('show'); }, 2200);
+  }
+
+  function copyText(text) {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      return navigator.clipboard.writeText(text);
+    }
+    return new Promise(function (resolve, reject) {
+      var ta = document.createElement('textarea');
+      ta.value = text;
+      ta.setAttribute('readonly', '');
+      ta.style.position = 'fixed';
+      ta.style.top = '-1000px';
+      document.body.appendChild(ta);
+      ta.select();
+      ta.setSelectionRange(0, text.length);
+      var ok = false;
+      try { ok = document.execCommand('copy'); } catch (e) { ok = false; }
+      document.body.removeChild(ta);
+      ok ? resolve() : reject(new Error('copy failed'));
+    });
+  }
+
+  function flash(btn, label) {
+    var old = btn.textContent;
+    btn.textContent = label;
+    btn.classList.add('done');
+    setTimeout(function () { btn.textContent = old; btn.classList.remove('done'); }, 1600);
+  }
+
+  // Copy buttons: copy the text of the <pre> pointed by data-target
+  var copies = document.querySelectorAll('button.copy');
+  for (var i = 0; i < copies.length; i++) {
+    copies[i].addEventListener('click', function (ev) {
+      var btn = ev.currentTarget;
+      var pre = document.getElementById(btn.getAttribute('data-target'));
+      if (!pre) return;
+      var text = pre.textContent;
+      copyText(text).then(function () {
+        flash(btn, 'Copied');
+        toast('Text copied');
+      }, function () {
+        // last resort: select the block so the user can copy manually
+        var range = document.createRange();
+        range.selectNodeContents(pre);
+        var sel = window.getSelection();
+        sel.removeAllRanges();
+        sel.addRange(range);
+        toast('Selected: press Ctrl+C / Cmd+C to copy');
+      });
+    });
+  }
+
+  // Share this game: native share sheet, otherwise copy text + URL
+  var shareBtn = document.getElementById('btn-share');
+  if (shareBtn) {
+    shareBtn.addEventListener('click', function () {
+      var payload = { title: SHARE_TITLE, text: SHARE_TEXT, url: SHARE_URL };
+      if (navigator.share) {
+        try {
+          var p = navigator.share(payload);
+          if (p && p.catch) {
+            p.catch(function (err) {
+              if (err && err.name === 'AbortError') return; // user closed the sheet
+              copyText(SHARE_TEXT + ' ' + SHARE_URL).then(function () { toast('Link copied'); }, function () { toast(SHARE_URL); });
+            });
+          }
+        } catch (e) {
+          copyText(SHARE_TEXT + ' ' + SHARE_URL).then(function () { toast('Link copied'); }, function () { toast(SHARE_URL); });
+        }
+        return;
+      }
+      copyText(SHARE_TEXT + ' ' + SHARE_URL).then(function () {
+        flash(shareBtn, 'Link copied');
+        toast('Link copied: paste it anywhere');
+      }, function () {
+        toast(SHARE_URL);
+      });
+    });
+  }
+})();
+
+/* Discreet printed-circuit backdrop. Drawn once (and on resize), no animation loop,
+   no external requests. Respects prefers-reduced-motion by design (static). */
+(function () {
+  var canvas = document.getElementById('circuit');
+  if (!canvas || !canvas.getContext) return;
+  var ctx = canvas.getContext('2d');
+
+  function seeded(seed) {
+    var s = seed >>> 0;
+    return function () { s = (s * 1664525 + 1013904223) >>> 0; return s / 4294967296; };
+  }
+
+  function draw() {
+    var dpr = Math.min(window.devicePixelRatio || 1, 2);
+    var w = window.innerWidth, h = window.innerHeight;
+    canvas.width = Math.floor(w * dpr);
+    canvas.height = Math.floor(h * dpr);
+    canvas.style.width = w + 'px';
+    canvas.style.height = h + 'px';
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, w, h);
+
+    var rnd = seeded(20260915);
+    var step = Math.max(22, Math.round(Math.min(w, h) / 28));
+    var traces = Math.round((w * h) / 42000);
+    ctx.lineWidth = 1.2;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+
+    for (var i = 0; i < traces; i++) {
+      var x = Math.round(rnd() * (w / step)) * step;
+      var y = Math.round(rnd() * (h / step)) * step;
+      var segs = 2 + Math.floor(rnd() * 4);
+      var alpha = 0.10 + rnd() * 0.16;
+      ctx.strokeStyle = 'rgba(61, 90, 254, ' + alpha.toFixed(3) + ')';
+      ctx.beginPath();
+      ctx.moveTo(x, y);
+      for (var k = 0; k < segs; k++) {
+        var dir = rnd();
+        var len = step * (1 + Math.floor(rnd() * 3));
+        if (dir < 0.4) x += len;
+        else if (dir < 0.7) y += len;
+        else if (dir < 0.85) { x += len; y += len; }
+        else { x -= len; y += len; }
+        ctx.lineTo(x, y);
+      }
+      ctx.stroke();
+      ctx.fillStyle = 'rgba(61, 90, 254, ' + Math.min(0.6, alpha + 0.22).toFixed(3) + ')';
+      ctx.beginPath();
+      ctx.arc(x, y, 2.4, 0, Math.PI * 2);
+      ctx.fill();
+      if (rnd() < 0.10) {
+        var glow = rnd() < 0.5 ? '0, 240, 255' : '255, 45, 149';
+        ctx.fillStyle = 'rgba(' + glow + ', 0.55)';
+        ctx.shadowColor = 'rgba(' + glow + ', 0.9)';
+        ctx.shadowBlur = 10;
+        ctx.beginPath();
+        ctx.arc(x, y, 2.2, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.shadowBlur = 0;
+      }
+    }
+  }
+
+  var t = null;
+  window.addEventListener('resize', function () {
+    clearTimeout(t);
+    t = setTimeout(draw, 120);
+  });
+  draw();
+})();
+</script>
+</body>
+</html>
