@@ -91,6 +91,10 @@
   .world { width: min(560px, 96vw); background: rgba(11,16,32,.72); border: 1px solid rgba(61,90,254,.45); border-radius: 12px; padding: 8px 10px; margin: 6px 0; box-sizing: border-box; }
   .world h3 { margin: 2px 0 6px; font-size: 13px; letter-spacing: .1em; opacity: .9; }
   .world.locked { opacity: .45; }
+  .world.seasonal { border-color: rgba(255,122,26,.55); background: linear-gradient(180deg, rgba(30,10,26,.85) 0%, rgba(11,16,32,.72) 100%); }
+  .world.seasonal h3 { color: #FF7A1A; opacity: 1; }
+  .pill.bonus.locked { opacity: .55; }
+  .pill.bonus:not(.locked) { border-color: #FF7A1A; }
   .grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px; }
   .pill { background: #131b33; border: 1px solid #3D5AFE; border-radius: 10px; padding: 6px 2px; font-size: 13px; text-align: center; line-height: 1.2; }
   .pill small { display: block; font-size: 10px; color: #FFD60A; letter-spacing: .1em; height: 12px; }
@@ -130,7 +134,6 @@
   .board { font-size: 13px; max-height: 120px; overflow: auto; }
   .board div { display: flex; justify-content: space-between; padding: 2px 0; border-bottom: 1px solid rgba(232,241,255,.08); }
 </style>
-<link rel="icon" href="favicon.png">
 </head>
 <body>
 <div id="stage">
@@ -163,8 +166,8 @@
     <h1>LEVELS</h1>
     <div class="counter" id="counter">Levels 0/12 &mdash; Stars 0/36 &mdash; World 1</div>
     <div class="world" id="world1"><h3>WORLD 1 &mdash; ABYSS</h3><div class="grid" id="grid1"></div></div>
+    <div class="world seasonal" id="worldHalloween"><h3>SEASON SPECIAL &mdash; HALLOWEEN &#127875;</h3><div class="grid" id="gridHalloween"></div></div>
     <div class="world locked"><h3>WORLD 2 &mdash; coming soon &middot; Mirror mode locked</h3><div class="grid" id="grid2"></div></div>
-    <div class="world locked"><h3>WORLD 3 &mdash; coming soon</h3><div class="grid" id="grid3"></div></div>
     <div id="hint"></div>
   </div>
   <div id="menuBtns" class="ui hidden">
@@ -1724,7 +1727,16 @@
   $('studioName').textContent = STUDIO_NAME;
 
   /* =================== 1. constants (design doc section 2) =================== */
-  var PAL = { bg: '#0B1020', player: '#00F0FF', obstacle: '#FF2D95', coin: '#FFD60A', decor: '#3D5AFE', ui: '#E8F1FF', surge: '#B000FF', surgeHi: '#F5F7FF' };
+  /* Halloween seasonal levels (13-14-15) : bonus content that unlocks after clearing all 12 world-1 levels.
+     Reskin scoped to bonus levels only (murs momie, toiles araignee, citrouilles, chauves-souris, manoir + BLOOD MOON).
+     Gameplay UNCHANGED : hitboxes, timings, audio, physics identical. Canonical 12-level experience preserved for anyone
+     who prefers it. Toggle is dynamic per-level : hauntedActive() returns true iff S.level is a seasonal bonus. */
+  var PAL_DEFAULT = { bg: '#0B1020', player: '#00F0FF', obstacle: '#FF2D95', coin: '#FFD60A', decor: '#3D5AFE', ui: '#E8F1FF', surge: '#B000FF', surgeHi: '#F5F7FF' };
+  var PAL_HAUNTED = { bg: '#0F0810', player: '#00F0FF', obstacle: '#E8DFC4', coin: '#FF7A1A', decor: '#3D2540', ui: '#F0E6D2', surge: '#E00040', surgeHi: '#FFE6E6' };
+  /* IMPORTANT : PAL is a fresh copy of PAL_DEFAULT, never a reference. applyLevelTheme() overwrites PAL's keys
+     in place so every draw sees the current palette on the next frame. If PAL === PAL_DEFAULT, mutating PAL
+     would corrupt the reference source and default levels would inherit haunted colors after visiting a bonus. */
+  var PAL = {}; for (var _k in PAL_DEFAULT) if (Object.prototype.hasOwnProperty.call(PAL_DEFAULT, _k)) PAL[_k] = PAL_DEFAULT[_k];
   /* SURGE (13.1) : persistent gauge, world x1.7 through the simulation step, 8 beats, magnet half a screen ahead */
   var SURGE_MAX = 24, SURGE_BEATS = 13, /* 13 beats de monde a x1,7 = ~3,8 s reelles (un vrai super-pouvoir, pas un flash) */ SURGE_SPEED = 1.7, SURGE_RISE_S = 0.3, SURGE_GRACE_S = 1.5, SURGE_RECOVER_S = 0.5, SURGE_LIFT = 0.45;
   var SURGE_GAIN = { obstacle: 1, coin: 0.5, level: 3 };
@@ -1948,6 +1960,37 @@
     { id: 11, name: 'Circuit', bpm: 164, diff: 5, intro: null, line: '......W.F.A..C..WW.F.L..A.F.A..G..W.F.WCW..A.A.F..B.WWWWWL..F.A.LL.A..C..F.W.L.F.A.F..G.WW..C.....' },
     { id: 12, name: 'Live Wire', bpm: 168, diff: 5, intro: null, line: '......W.F.W.F..A.F.A..C..WWWW.F.WCW..A.F.A..G..L.F.LL..C..|..F.W.F.W..A.A.A.F..WWWBWWWWL.F..C..WWW.F.WW.A.F.A..WCW.LLL.F..G..W.F.W.F.A.F.A..C.....' }
   ];
+  /* Halloween seasonal levels : always present in LEVELS, gated by menu-side lock (unlocked after 12 wins).
+     Appended as slots 13-14-15 so the canonical 12 (Overload / Circuit / Live Wire) stay intact.
+     Progression bookkeeping keeps WORLD_LEVELS=12 (save/progress unchanged), the 3 extras are accessible
+     via the Levels menu grid but never counted in "X/12 cleared". All 3 lines pass validateLine(). */
+  var HAUNTED_BONUS = [
+    { id: 13, name: 'Graveyard', bpm: 96, diff: 2, intro: null, line: '......W...W...W...C...W...F...C...W...W...C.....' },
+    { id: 14, name: 'The Hunt', bpm: 138, diff: 3, intro: null, line: '......W....F....W....C....F....W...G...W.F.W.F...C...W.F.W.F..G..W.F.W.F.W.F.C..W.F.WWWW.F..G..WWWW.C.....F..W.F.W.F.WWWW..C.....' },
+    { id: 15, name: 'The Manor', bpm: 156, diff: 5, intro: null, line: '......W.F.A..C..A.F.A..G..W.F.WCW..L..F.A.A.F..B.WWWWW.F..LL.A.F.A..C..W.F.LL.A..F.A.A..G.WW.F..C..L..F.WWW..A.F.A..W.F.L.F.A.F..G..WCW..LL.F.A..C.....' }
+  ];
+  LEVELS = LEVELS.concat(HAUNTED_BONUS);
+  /* total playable levels (12 canonical + 3 seasonal). Used only for menu grid display, NOT for progress/save :
+     those keep WORLD_LEVELS=12 so player data stays untouched. */
+  var LEVELS_TOTAL = LEVELS.length;
+  /* isBonusLevel(n) -> true iff level n is a Halloween seasonal (13, 14, 15).
+     hauntedActive() -> true iff we are currently playing a bonus level (drives the reskin at render time).
+     Progressive unlock : bonus k (1..3) unlocks once the player has won >= UNLOCK_TIER[k-1] canonical levels.
+     Tier design : L4 wins -> H1 (Graveyard, chill 96 bpm), L8 wins -> H2 (Hunt, 138 bpm), L12 wins -> H3 (Manor, 156 bpm). */
+  var HAUNTED_UNLOCK_TIER = [4, 8, 12];
+  function isBonusLevel(n) { return n > WORLD_LEVELS && n <= LEVELS_TOTAL; }
+  function canonicalWins() {
+    if (typeof progress === 'undefined') return 0;
+    var w = 0; try { for (var i = 1; i <= WORLD_LEVELS; i++) if (progress.isWon(1, i)) w++; } catch (e) {} return w;
+  }
+  function hauntedSlotUnlocked(k) { /* k in 1..3 */
+    return canonicalWins() >= HAUNTED_UNLOCK_TIER[k - 1];
+  }
+  function hauntedLevelUnlocked(n) { /* n in WORLD_LEVELS+1 .. LEVELS_TOTAL */
+    return isBonusLevel(n) && hauntedSlotUnlocked(n - WORLD_LEVELS);
+  }
+  function hauntedActive() { return typeof S !== 'undefined' && S.level && isBonusLevel(S.level); }
+  function surgeLabel() { return hauntedActive() ? 'BLOOD MOON' : 'SURGE'; }
   /* new elements and the level where each one first appears (intro card "NEW: ...", win screen "Next level: ...") */
   var NEW_ELEMENTS = [{ ch: 'F', label: 'cyan fields' }, { ch: 'A', label: 'flipping doors' }, { ch: 'G', label: 'ghost coins' }, { ch: 'B', label: 'batteries' }, { ch: 'L', label: 'late walls' }];
   function newLabel(levelIndex) {
@@ -2373,7 +2416,7 @@
   function syncSurgeBtn() {
     var want = S.mode === 'play' && surgeReady() && !S.surge.active, el = $('btnSurge');
     if (want && !el) {
-      el = document.createElement('button'); el.id = 'btnSurge'; el.textContent = 'SURGE'; el.setAttribute('aria-label', 'Surge');
+      el = document.createElement('button'); el.id = 'btnSurge'; el.textContent = surgeLabel(); el.setAttribute('aria-label', surgeLabel());
       el.onclick = function () { audio.unlock(); triggerSurge('button'); };
       $('stage').appendChild(el);
     } else if (!want && el) el.parentNode.removeChild(el);
@@ -2381,19 +2424,29 @@
   function nextLevelNumber() { var n = progress.nextLevel(); return n && n.world === 1 ? n.level : WORLD_LEVELS; }
   /* startLevel(n, opts) ; opts.intro = false skips the intro card (test hook, retry after a death shows a shorter card) */
   function startLevel(n, opts) {
-    n = Math.max(1, Math.min(WORLD_LEVELS, n | 0));
+    n = Math.max(1, Math.min(LEVELS_TOTAL, n | 0));
+    var isBonus = isBonusLevel(n);    /* Halloween seasonal bonus : no progress bookkeeping, haunted reskin */
+    if (isBonus && !hauntedLevelUnlocked(n)) return;  /* guard : each bonus locked until its unlock tier is reached */
     var retrying = S.failLevel === n && S.failStreak > 0;
     if (S.failLevel !== n) { S.failLevel = n; S.failStreak = 0; }
-    S.mode = 'play'; S.world = 1; S.level = n; S.daily = false; S.custom = false; S.lastResult = null;
+    S.mode = 'play'; S.world = 1; S.level = n; S.daily = false; S.custom = isBonus; S.lastResult = null;
+    applyLevelTheme(n);  /* mutate PAL to haunted palette iff bonus, restore default otherwise */
     S.lvl = compile(levelDef(n));
     resetRun();
     S.introT = opts && opts.intro === false ? 0 : (retrying ? INTRO_S * 0.5 : INTRO_S);
     if (!save.get('seen')) save.set('seen', true);
     var st = save.get('stats'); st.runs = (st.runs | 0) + 1; save.touch();
-    progress.setCurrent(1, n);
-    T('level_start', { world: 1, level: n, attempt: progress.attempt(1, n), bpm: S.bpm });
+    if (!isBonus) progress.setCurrent(1, n);
+    T('level_start', { world: 1, level: n, attempt: isBonus ? 1 : progress.attempt(1, n), bpm: S.bpm, bonus: isBonus });
     Ads.gameplayStart();
     ui();
+  }
+  /* applyLevelTheme(n) : mutate the global PAL object to haunted palette for bonus levels, back to default otherwise.
+     We mutate the SAME object (not reassign) so every draw function that already captured `PAL` in its closure sees
+     the new colors on the very next frame, without any wiring change. Palette is fully restored on toTitle(). */
+  function applyLevelTheme(n) {
+    var src = isBonusLevel(n) ? PAL_HAUNTED : PAL_DEFAULT;
+    for (var k in src) if (Object.prototype.hasOwnProperty.call(src, k)) PAL[k] = src[k];
   }
   function startDaily() {
     var official = daily.canPlayOfficial();
@@ -2427,7 +2480,7 @@
   }
   function leavePlay() { if (S.mode === 'play') { Ads.gameplayStop(); musicCut(); } ensureMusic(); }
   function toMenu() { leavePlay(); S.mode = 'menu'; S.daily = false; ui(); }
-  function toTitle() { leavePlay(); S.mode = 'title'; S.daily = false; ui(); }
+  function toTitle() { leavePlay(); S.mode = 'title'; S.daily = false; applyLevelTheme(0); ui(); }
   function clickPlay() { audio.unlock(); ensureMusic(); sfx('click'); startLevel(nextLevelNumber()); }
   function progressPct() { return S.lvl ? Math.max(0, Math.min(1, S.beat / S.lvl.length)) : 0; }
   function levelLabel() { return S.daily ? 'daily' : (S.custom ? 'test' : S.level); }
@@ -3189,12 +3242,10 @@
       if (o.type === 'A') drawDoorState(x0, x1, bandTop, bandBot, o, isWall);
       ctx.globalAlpha = 1;
     }
-    /* finish line */
+    /* finish line (themed via drawFinish) */
     var fx = toX(lvl.length);
     if (fx > -10 && fx < W + 10) {
-      ctx.fillStyle = PAL.player; ctx.shadowColor = PAL.player; ctx.shadowBlur = 16;
-      ctx.fillRect(fx - 3, bandTop, 6, bandH); ctx.shadowBlur = 0;
-      ctx.fillStyle = 'rgba(0,240,255,.15)'; ctx.fillRect(fx, bandTop, Math.max(0, W - fx), bandH);
+      drawFinish(fx, bandTop, bandH, W);
     }
     /* coins (12.6) */
     var x2Drawn = false;
@@ -3273,7 +3324,7 @@
       vg.addColorStop(0, 'rgba(176,0,255,0)'); vg.addColorStop(1, 'rgba(176,0,255,' + (0.28 * sg.lift).toFixed(3) + ')');
       ctx.fillStyle = vg; ctx.fillRect(-20, -20, W + 40, H + 40);
     }
-    if (playing && (sg.readyT > 0 || sg.active)) drawSurgeLabel(sg.active ? 'SURGE!' : 'SURGE READY', W, bandTop, sg.active ? 1 : Math.min(1, sg.readyT / 0.3));
+    if (playing && (sg.readyT > 0 || sg.active)) drawSurgeLabel(sg.active ? surgeLabel() + '!' : surgeLabel() + ' READY', W, bandTop, sg.active ? 1 : Math.min(1, sg.readyT / 0.3));
     /* PERFECT popup (14.2) : small, above the spectre, UI colour, 0.5 s, floats up and fades */
     if ((playing || S.mode === 'won') && S.perfectT > 0) drawPerfect(px, py - r * 2.2, r, S.perfectT / PERFECT_POP_S);
     /* particles */
@@ -3563,6 +3614,209 @@
     ctx.beginPath(); ctx.ellipse(x, y, Math.max(0.5, r * 0.55 * sp), r * 0.55, 0, 0, Math.PI * 2); ctx.stroke();
     ctx.restore();
   }
+
+  /* =========== HAUNTED THEME OVERRIDES (Halloween reskin) ===========
+     Dispatched at draw time by drawWall / drawField / drawCoin / drawGhostCoin / drawFinish wrappers,
+     which use hauntedActive() to route to _HAUNTED variants during bonus levels (13-15), _DEFAULT otherwise.
+     Gameplay untouched : same hitboxes, same call sites, same timings. */
+  function drawWall_HAUNTED(x0, x1, top, bot, blink, lit, ripple) {
+    ctx.save();
+    var w = x1 - x0, h = bot - top;
+    /* beige base = bandaged body */
+    ctx.fillStyle = '#E8DFC4';
+    ctx.shadowColor = lit ? '#FFE6C4' : '#A89871'; ctx.shadowBlur = lit ? 24 : 8;
+    ctx.fillRect(x0, top, w, h);
+    ctx.shadowBlur = 0;
+    /* diagonal bandages (12 stripes, slight slope) */
+    ctx.strokeStyle = '#A89871'; ctx.lineWidth = 1;
+    for (var i = 0; i < 12; i++) {
+      var off = (h * i / 8) - h * 0.2;
+      ctx.beginPath(); ctx.moveTo(x0, top + off); ctx.lineTo(x1, top + off + w * 0.15); ctx.stroke();
+    }
+    /* reverse cross layer (thinner) */
+    ctx.strokeStyle = 'rgba(168,152,113,.5)';
+    for (var j = 0; j < 8; j++) {
+      var off2 = (h * j / 6) - h * 0.1;
+      ctx.beginPath(); ctx.moveTo(x1, top + off2); ctx.lineTo(x0, top + off2 + w * 0.18); ctx.stroke();
+    }
+    if (ripple) { /* ghost passing through : scrolling pale bands (preserved) */
+      ctx.fillStyle = 'rgba(255,255,255,.4)';
+      for (var k = 0; k < 6; k++) {
+        var yy = top + (((sinT * 0.9 + k / 6) % 1 + 1) % 1) * h;
+        ctx.fillRect(x0, yy, w, Math.max(2, h * 0.02));
+      }
+    }
+    /* frayed edges (small triangles top & bottom) */
+    ctx.fillStyle = '#C8B891';
+    for (var m = 0; m < 5; m++) {
+      var py = top + h * (0.15 + m * 0.2);
+      ctx.beginPath(); ctx.moveTo(x0, py); ctx.lineTo(x0 - 3, py + 2); ctx.lineTo(x0, py + 4); ctx.fill();
+      ctx.beginPath(); ctx.moveTo(x1, py + 8); ctx.lineTo(x1 + 3, py + 10); ctx.lineTo(x1, py + 12); ctx.fill();
+    }
+    /* blink outline preserved for the "wall is imminent" signal */
+    ctx.strokeStyle = blink ? '#FFFFFF' : 'rgba(168,152,113,.4)'; ctx.lineWidth = blink ? 5 : 1;
+    ctx.strokeRect(x0 + 1, top + 1, w - 2, h - 2);
+    ctx.restore();
+  }
+  function drawField_HAUNTED(x0, x1, top, bot, blink, lit, idx) {
+    var w = x1 - x0, h = bot - top;
+    /* faint fill (cyan haunted -> ghostly grey-blue) */
+    ctx.fillStyle = lit ? 'rgba(220,220,235,.35)' : 'rgba(200,200,216,.15)';
+    if (lit) { ctx.shadowColor = '#F0E6D2'; ctx.shadowBlur = 30; }
+    ctx.fillRect(x0, top, w, h);
+    ctx.shadowBlur = 0;
+    ctx.strokeStyle = blink ? '#FFFFFF' : 'rgba(200,200,216,.7)'; ctx.lineWidth = blink ? 5 : 2;
+    ctx.strokeRect(x0 + 1, top + 1, w - 2, h - 2);
+    /* centered radial cobweb, clipped to rect */
+    ctx.save();
+    ctx.beginPath(); ctx.rect(x0, top, w, h); ctx.clip();
+    var cx = x0 + w * 0.5, cy = top + h * 0.5, maxR = Math.min(w, h) * 0.48;
+    var spokes = 8;
+    ctx.strokeStyle = 'rgba(220,220,235,.7)'; ctx.lineWidth = 1;
+    for (var s = 0; s < spokes; s++) {
+      var ang = (s / spokes) * Math.PI * 2;
+      ctx.beginPath(); ctx.moveTo(cx, cy);
+      ctx.lineTo(cx + Math.cos(ang) * maxR, cy + Math.sin(ang) * maxR); ctx.stroke();
+    }
+    /* 4 concentric polygonal rings (sagging trames) */
+    ctx.strokeStyle = 'rgba(220,220,235,.55)';
+    for (var r = 1; r <= 4; r++) {
+      var radius = (maxR / 4) * r;
+      ctx.beginPath();
+      for (var i = 0; i <= spokes; i++) {
+        var a2 = (i / spokes) * Math.PI * 2;
+        var px = cx + Math.cos(a2) * radius, py2 = cy + Math.sin(a2) * radius;
+        if (i === 0) { ctx.moveTo(px, py2); }
+        else {
+          var pa = ((i - 1) / spokes) * Math.PI * 2;
+          var ma = (a2 + pa) / 2, sag = radius * 1.08;
+          var mx = cx + Math.cos(ma) * sag, my = cy + Math.sin(ma) * sag;
+          ctx.quadraticCurveTo(mx, my, px, py2);
+        }
+      }
+      ctx.stroke();
+    }
+    /* 3 dew drops on outer ring */
+    ctx.fillStyle = 'rgba(220,220,235,.9)';
+    for (var d = 0; d < 3; d++) {
+      var da = (d / 3) * Math.PI * 2 + 0.3;
+      ctx.beginPath();
+      ctx.arc(cx + Math.cos(da) * maxR * 0.85, cy + Math.sin(da) * maxR * 0.85, 1.5, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+  function drawCoin_HAUNTED(x, y, r, seed) {
+    ctx.save();
+    ctx.shadowColor = '#FF7A1A'; ctx.shadowBlur = 10;
+    /* main pumpkin body */
+    ctx.fillStyle = '#FF7A1A';
+    ctx.beginPath(); ctx.ellipse(x, y, r * 1.1, r * 0.95, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.shadowBlur = 0;
+    /* 3 dark segment lines */
+    ctx.strokeStyle = '#8A3A05'; ctx.lineWidth = 1;
+    for (var i = -1; i <= 1; i++) {
+      ctx.beginPath(); ctx.ellipse(x + i * r * 0.35, y, r * 0.25, r * 0.9, 0, 0, Math.PI * 2); ctx.stroke();
+    }
+    /* stem */
+    ctx.fillStyle = '#2D5A2D'; ctx.fillRect(x - 2, y - r * 1.1, 4, r * 0.35);
+    /* jack-o'-lantern eyes only when large enough */
+    if (r > 8) {
+      ctx.fillStyle = '#5A1A00';
+      ctx.beginPath(); ctx.moveTo(x - r * 0.4, y - r * 0.15); ctx.lineTo(x - r * 0.15, y - r * 0.15); ctx.lineTo(x - r * 0.28, y + r * 0.1); ctx.fill();
+      ctx.beginPath(); ctx.moveTo(x + r * 0.15, y - r * 0.15); ctx.lineTo(x + r * 0.4, y - r * 0.15); ctx.lineTo(x + r * 0.28, y + r * 0.1); ctx.fill();
+    }
+    ctx.restore();
+  }
+  function drawGhostCoin_HAUNTED(x, y, r, seed) {
+    ctx.save();
+    ctx.globalAlpha *= (S.ghost || S.mode !== 'play') ? 1 : 0.7; /* preserve "me traverse" signal */
+    var wing = 1 + Math.sin(sinT * 8 + seed) * 0.15;
+    /* wings (dark plum) */
+    ctx.fillStyle = '#2A1338';
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    ctx.quadraticCurveTo(x - r * 1.4 * wing, y - r * 0.4, x - r * 1.6 * wing, y + r * 0.1);
+    ctx.quadraticCurveTo(x - r * 1.2 * wing, y + r * 0.05, x - r * 0.9 * wing, y + r * 0.3);
+    ctx.quadraticCurveTo(x - r * 0.7 * wing, y + r * 0.05, x - r * 0.5, y + r * 0.2);
+    ctx.lineTo(x, y + r * 0.3);
+    ctx.lineTo(x + r * 0.5, y + r * 0.2);
+    ctx.quadraticCurveTo(x + r * 0.7 * wing, y + r * 0.05, x + r * 0.9 * wing, y + r * 0.3);
+    ctx.quadraticCurveTo(x + r * 1.2 * wing, y + r * 0.05, x + r * 1.6 * wing, y + r * 0.1);
+    ctx.quadraticCurveTo(x + r * 1.4 * wing, y - r * 0.4, x, y);
+    ctx.fill();
+    /* body */
+    ctx.fillStyle = '#3D1548';
+    ctx.beginPath(); ctx.ellipse(x, y, r * 0.45, r * 0.55, 0, 0, Math.PI * 2); ctx.fill();
+    /* 2 pointy ears */
+    ctx.fillStyle = '#2A1338';
+    ctx.beginPath(); ctx.moveTo(x - r * 0.25, y - r * 0.4); ctx.lineTo(x - r * 0.35, y - r * 0.75); ctx.lineTo(x - r * 0.05, y - r * 0.45); ctx.fill();
+    ctx.beginPath(); ctx.moveTo(x + r * 0.25, y - r * 0.4); ctx.lineTo(x + r * 0.35, y - r * 0.75); ctx.lineTo(x + r * 0.05, y - r * 0.45); ctx.fill();
+    /* glowing red eyes (only when large enough) */
+    if (r > 6) {
+      ctx.fillStyle = '#E00040';
+      ctx.beginPath(); ctx.arc(x - r * 0.15, y - r * 0.15, r * 0.08, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc(x + r * 0.15, y - r * 0.15, r * 0.08, 0, Math.PI * 2); ctx.fill();
+    }
+    ctx.restore();
+  }
+  function drawFinish_HAUNTED(fx, bandTop, bandH, W) {
+    var y = bandTop, h = bandH;
+    var manorH = h * 0.75, manorTop = y + h * 0.15, bodyW = Math.min(90, W - fx - 20), bx = fx + 10;
+    /* fog wash blood red */
+    var grad = ctx.createLinearGradient(fx, y, Math.min(fx + 220, W), y);
+    grad.addColorStop(0, 'rgba(176, 0, 32, .25)'); grad.addColorStop(1, 'rgba(60, 5, 15, .1)');
+    ctx.fillStyle = grad; ctx.fillRect(fx, y, Math.max(0, W - fx), h);
+    if (bodyW < 30) return; /* too narrow to draw a legible manor */
+    /* main body */
+    ctx.fillStyle = '#1A0A1F'; ctx.fillRect(bx, manorTop + manorH * 0.4, bodyW, manorH * 0.6);
+    /* main roof */
+    ctx.beginPath();
+    ctx.moveTo(bx - 8, manorTop + manorH * 0.4);
+    ctx.lineTo(bx + bodyW / 2, manorTop);
+    ctx.lineTo(bx + bodyW + 8, manorTop + manorH * 0.4);
+    ctx.closePath(); ctx.fill();
+    /* asymmetric second peak */
+    ctx.beginPath();
+    ctx.moveTo(bx + bodyW * 0.55, manorTop + manorH * 0.4);
+    ctx.lineTo(bx + bodyW * 0.75, manorTop + manorH * 0.15);
+    ctx.lineTo(bx + bodyW * 0.95, manorTop + manorH * 0.4);
+    ctx.closePath(); ctx.fill();
+    /* flickering windows */
+    var flicker = 0.7 + Math.sin(sinT * 6) * 0.2;
+    ctx.fillStyle = 'rgba(255, 184, 74, ' + flicker.toFixed(3) + ')';
+    ctx.shadowColor = '#FFB84A'; ctx.shadowBlur = 8;
+    ctx.fillRect(bx + 8, manorTop + manorH * 0.55, 10, 12);
+    ctx.fillRect(bx + bodyW - 18, manorTop + manorH * 0.55, 10, 12);
+    ctx.fillRect(bx + bodyW / 2 - 5, manorTop + manorH * 0.25, 8, 10);
+    ctx.shadowBlur = 0;
+    /* arched door */
+    ctx.fillStyle = '#080410';
+    ctx.beginPath();
+    ctx.moveTo(bx + bodyW / 2 - 8, manorTop + manorH);
+    ctx.lineTo(bx + bodyW / 2 - 8, manorTop + manorH * 0.8);
+    ctx.quadraticCurveTo(bx + bodyW / 2, manorTop + manorH * 0.7, bx + bodyW / 2 + 8, manorTop + manorH * 0.8);
+    ctx.lineTo(bx + bodyW / 2 + 8, manorTop + manorH);
+    ctx.closePath(); ctx.fill();
+  }
+  /* wire theme dispatch : capture the original (default) draws and wrap them so each call routes to _HAUNTED
+     during bonus levels, back to _DEFAULT otherwise. This mutates the same drawWall / drawField / drawCoin /
+     drawGhostCoin symbols already used by the render loop, so no call site changes are needed. drawFinish is
+     new (was inline in render()) and follows the same pattern. */
+  var drawWall_DEFAULT = drawWall;
+  var drawField_DEFAULT = drawField;
+  var drawCoin_DEFAULT = drawCoin;
+  var drawGhostCoin_DEFAULT = drawGhostCoin;
+  var drawFinish_DEFAULT = function (fx, bandTop, bandH, W) {
+    ctx.fillStyle = PAL.player; ctx.shadowColor = PAL.player; ctx.shadowBlur = 16;
+    ctx.fillRect(fx - 3, bandTop, 6, bandH); ctx.shadowBlur = 0;
+    ctx.fillStyle = 'rgba(0,240,255,.15)'; ctx.fillRect(fx, bandTop, Math.max(0, W - fx), bandH);
+  };
+  drawWall = function () { return (hauntedActive() ? drawWall_HAUNTED : drawWall_DEFAULT).apply(null, arguments); };
+  drawField = function () { return (hauntedActive() ? drawField_HAUNTED : drawField_DEFAULT).apply(null, arguments); };
+  drawCoin = function () { return (hauntedActive() ? drawCoin_HAUNTED : drawCoin_DEFAULT).apply(null, arguments); };
+  drawGhostCoin = function () { return (hauntedActive() ? drawGhostCoin_HAUNTED : drawGhostCoin_DEFAULT).apply(null, arguments); };
+  var drawFinish = function () { return (hauntedActive() ? drawFinish_HAUNTED : drawFinish_DEFAULT).apply(null, arguments); };
   /* classic ghost (12.3 / 12.4) : rounded dome, wavy bottom with 3 waves, 2 oval white eyes with dark pupils.
      solid : skin body, white outline 2 px ; ghost : translucent pale body (alpha .5), dashed wavy outline, 3 wisps, bigger eyes */
   function drawSpectre(x, y, r, skin, ghost, bob, surge) {
@@ -3834,6 +4088,7 @@
     var t = progress.totals(), w1 = progress.worldSummary(1);
     $('counter').textContent = 'Levels ' + w1.won + '/' + WORLD_LEVELS + ' \u2014 Stars ' + w1.stars + '/' + (WORLD_LEVELS * 3) + ' \u2014 World 1' + (t.skipped ? ' \u2014 ' + t.skipped + ' skipped' : '');
     var next = progress.nextLevel() || { world: 1, level: WORLD_LEVELS };
+    /* grid1 : the 12 canonical world-1 levels */
     var html = '';
     for (var l = 1; l <= WORLD_LEVELS; l++) {
       var un = progress.isUnlocked(1, l), won = progress.isWon(1, l), sk = progress.isSkipped(1, l);
@@ -3841,13 +4096,32 @@
       var st = won ? '\u2605'.repeat(progress.stars(1, l)) + '\u2606'.repeat(3 - progress.stars(1, l)) : (sk ? 'skip' : (un ? '' : '\u2014'));
       var lv = LEVELS[l - 1], dots = '';
       for (var k = 1; k <= 5; k++) dots += '<i class="' + (k <= lv.diff ? 'on' : '') + '"></i>';
-      html += '<button class="' + cls + '" data-level="' + l + '"' + (un ? '' : ' disabled') + ' title="' + lv.name + ' \u00b7 ' + lv.bpm + ' BPM \u00b7 difficulty ' + lv.diff + '/5' + (perfectSaved(l) ? ' \u00b7 PERFECT ' + perfectSaved(l) : '') + '">' + l + '<small>' + st + '</small><span class="diff d' + lv.diff + '" data-diff="' + lv.diff + '">' + dots + '</span></button>';
+      var title = lv.name + ' \u00b7 ' + lv.bpm + ' BPM \u00b7 difficulty ' + lv.diff + '/5' + (perfectSaved(l) ? ' \u00b7 PERFECT ' + perfectSaved(l) : '');
+      html += '<button class="' + cls + '" data-level="' + l + '"' + (un ? '' : ' disabled') + ' title="' + title + '">' + l + '<small>' + st + '</small><span class="diff d' + lv.diff + '" data-diff="' + lv.diff + '">' + dots + '</span></button>';
     }
     $('grid1').innerHTML = html;
+    /* gridHalloween : the 3 seasonal bonus levels with progressive unlock (L4 wins -> H1, L8 -> H2, L12 -> H3) */
+    var wins = canonicalWins();
+    var hh = '';
+    for (var bk = 1; bk <= HAUNTED_BONUS.length; bk++) {
+      var lvlN = WORLD_LEVELS + bk;
+      var tier = HAUNTED_UNLOCK_TIER[bk - 1];
+      var unlocked = wins >= tier;
+      var bv = LEVELS[lvlN - 1], bdots = '';
+      for (var bd = 1; bd <= 5; bd++) bdots += '<i class="' + (bd <= bv.diff ? 'on' : '') + '"></i>';
+      var bst = unlocked ? '\ud83c\udf83' : '\ud83d\udd12';
+      var btitle = bv.name + ' \u00b7 ' + bv.bpm + ' BPM \u00b7 difficulty ' + bv.diff + '/5' + (perfectSaved(lvlN) ? ' \u00b7 PERFECT ' + perfectSaved(lvlN) : '') + ' \u00b7 Halloween seasonal' + (unlocked ? '' : ' \u00b7 clear ' + tier + ' levels to unlock (' + wins + '/' + tier + ')');
+      var bcls = 'pill bonus' + (unlocked ? '' : ' locked');
+      hh += '<button class="' + bcls + '" data-level="' + lvlN + '"' + (unlocked ? '' : ' disabled') + ' title="' + btitle + '">' + lvlN + '<small>' + bst + '</small><span class="diff d' + bv.diff + '" data-diff="' + bv.diff + '">' + bdots + '</span></button>';
+    }
+    $('gridHalloween').innerHTML = hh;
+    /* grid2 : world 2 preview (coming soon) */
     var g = '';
     for (l = 1; l <= WORLD_LEVELS; l++) g += '<button class="pill" disabled>' + l + '<small></small></button>';
-    $('grid2').innerHTML = g; $('grid3').innerHTML = g;
-    $('grid1').querySelectorAll('button[data-level]').forEach(function (b) { b.onclick = function () { audio.unlock(); ensureMusic(); sfx('click'); startLevel(+b.getAttribute('data-level')); }; });
+    $('grid2').innerHTML = g;
+    var wireLevelButton = function (b) { b.onclick = function () { audio.unlock(); ensureMusic(); sfx('click'); startLevel(+b.getAttribute('data-level')); }; };
+    $('grid1').querySelectorAll('button[data-level]').forEach(wireLevelButton);
+    $('gridHalloween').querySelectorAll('button[data-level]').forEach(wireLevelButton);
     $('btnMenuPlay').textContent = 'Play level ' + next.level + ' \u2014 ' + LEVELS[next.level - 1].name;
     $('btnDaily').textContent = daily.canPlayOfficial() ? 'Daily Line' : 'Daily Line \u2014 new in ' + timeToMidnight();
     show('btnChest', daily.chestAvailable());
@@ -3952,8 +4226,8 @@
   function renderShareCanvas(d) {
     var c = SHARE.canvas;
     if (!c) { c = SHARE.canvas = document.createElement('canvas'); c.width = SHARE_W; c.height = SHARE_H; }
-    var prev = ctx, W = SHARE_W, H = SHARE_H, FONT = 'system-ui, -apple-system, "Segoe UI", sans-serif';
-    ctx = c.getContext('2d');
+    var prev = ctx, prevT = sinT, W = SHARE_W, H = SHARE_H, FONT = 'system-ui, -apple-system, "Segoe UI", sans-serif';
+    ctx = c.getContext('2d'); sinT = 1.7;                 /* frozen animation phase : the same save always gives the same PNG */
     ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.globalAlpha = 1; ctx.textBaseline = 'alphabetic';
     ctx.fillStyle = PAL.bg; ctx.fillRect(0, 0, W, H);
     var ppb = BEAT_W * W;
@@ -4022,7 +4296,7 @@
     ctx.font = '600 20px ' + FONT; ctx.fillStyle = 'rgba(232,241,255,.5)';
     spacedText(STUDIO_NAME.toUpperCase() + '  \u00b7  ONE BUTTON. HOLD TO BECOME A GHOST.', W / 2, 1306, 4);
     ctx.textAlign = 'left';
-    ctx = prev;
+    ctx = prev; sinT = prevT;
     return c;
   }
   function renderShareCard(where, url) { return renderShareCanvas(shareData(where, url)).toDataURL('image/png'); }
