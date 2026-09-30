@@ -133,6 +133,13 @@
   #toast.on { opacity: 1; }
   .board { font-size: 13px; max-height: 120px; overflow: auto; }
   .board div { display: flex; justify-content: space-between; padding: 2px 0; border-bottom: 1px solid rgba(232,241,255,.08); }
+  /* Terms & Conditions / Privacy Policy notice (CrazyGames "User Consent" requirement).
+     Deliberately a plain inline notice on the title and levels screens, never a blocking pop-up.
+     #title > * and #menu > * are pointer-events: none so the text cannot eat taps meant for the
+     canvas, so the links have to opt back in. */
+  .legal { margin: 10px 0 0; font-size: 10px; line-height: 1.6; letter-spacing: .02em; opacity: .55; text-align: center; max-width: min(92vw, 460px); pointer-events: auto; }
+  .legal a { color: #00F0FF; opacity: .95; text-decoration: underline; pointer-events: auto; }
+  .legal a:active { opacity: 1; }
 </style>
 </head>
 <body>
@@ -160,6 +167,14 @@
       <button id="btnSound">Sound</button>
       <button id="btnMusic">Music</button>
     </div>
+    <!-- CrazyGames "User Consent" : a simple, NON-blocking notice to new players (their guidance is
+         explicitly a notice rather than a pop-up that blocks the user). Placed on the title and
+         levels screens, never over gameplay. -->
+    <p class="legal" id="legalTitle">Progress is saved on this device and, on CrazyGames, in your CrazyGames account.
+      <a href="https://www.crazygames.com/terms-and-conditions" data-legal="terms" target="_blank" rel="noopener noreferrer">Terms &amp; Conditions</a>
+      &middot;
+      <a href="https://www.crazygames.com/privacy-policy" data-legal="privacy" target="_blank" rel="noopener noreferrer">Privacy Policy</a>
+    </p>
   </div>
 
   <div id="menu" class="hidden">
@@ -169,6 +184,11 @@
     <div class="world seasonal" id="worldHalloween"><h3>SEASON SPECIAL &mdash; HALLOWEEN &#127875;</h3><div class="grid" id="gridHalloween"></div></div>
     <div class="world locked"><h3>WORLD 2 &mdash; coming soon &middot; Mirror mode locked</h3><div class="grid" id="grid2"></div></div>
     <div id="hint"></div>
+    <p class="legal">
+      <a href="https://www.crazygames.com/terms-and-conditions" data-legal="terms" target="_blank" rel="noopener noreferrer">Terms &amp; Conditions</a>
+      &middot;
+      <a href="https://www.crazygames.com/privacy-policy" data-legal="privacy" target="_blank" rel="noopener noreferrer">Privacy Policy</a>
+    </p>
   </div>
   <div id="menuBtns" class="ui hidden">
     <button id="btnMenuPlay" class="pri">Play</button>
@@ -2102,6 +2122,9 @@
   function ensureMusic() { var d = levelDef(nextLevelNumber()); MUS.titleTonic = tonicOf(d); MUS.titleMusic = levelMusic(d); MUS.titleNext = 0; }
   function setMusic(v) { save.set('music', !!v); if (!v) musicCut(); else ensureMusic(); ui(); return musicOn(); }
   function toggleMusic() { audio.unlock(); setMusic(!musicOn()); }
+  /* On CrazyGames the mute switch is owned by the CG shell, not by the game (v3 has no
+     game.mute()/unmute()): we only toggle locally and the SDK pushes the shell state back to us
+     through addSettingsChangeListener, see bindMuteSync(). */
   function toggleSound() { audio.unlock(); audio.toggle(); if (audio.muted()) musicCut(); else ensureMusic(); audioSetMuted(audio.muted()); ui(); }
   function tut() {
     var t = save.get('tut');
@@ -2212,7 +2235,7 @@
       Ads.configure({ caps: { interstitialGapMs: 0 } });
       Ads.setAdapter(pokiAdapter);
       Ads.loadingStop();                                  /* PokiSDK.gameLoadingFinished() */
-      if (S.mode === 'play') Ads.gameplayStart();          /* the player did not wait for init : sync the state */
+      if (S.mode === 'play') cgGameplayStart();             /* the player did not wait for init : sync the state */
       T('custom', { name: 'poki_sdk_ready' });
     }
     function fail() { done = true; }
@@ -2285,6 +2308,20 @@
   }
   var cgAdapter = null;
   function cgActive() { return !!cgAdapter && Ads.adapter() === cgAdapter; }
+  /* Single guarded entry point for the gameplay signal.
+     Both portal adapters latch on their own `playing` flag, so Ads.gameplayStart/Stop() are
+     idempotent ; calling CrazyGames.SDK.game.gameplayStart/Stop() directly is not, and with half a
+     dozen hooks (intro card, death, retry, win, pause, resume) that emitted two gameplayStop in a
+     row on every death->retry, which the portal contract forbids. S.cgGameplayStarted mirrors the
+     latch so the intro card only ever announces the start once. */
+  function cgGameplayStart() {
+    if (S.cgGameplayStarted) return;
+    try { Ads.gameplayStart(); S.cgGameplayStarted = true; } catch (e) { }
+  }
+  function cgGameplayStop() {
+    if (!S.cgGameplayStarted) return;
+    try { Ads.gameplayStop(); S.cgGameplayStarted = false; } catch (e) { }
+  }
   /* rewarded buttons hidden when the portal reports an adblocker (CrazyGames) ; everything else unchanged */
   function rewardedBlocked() { return cgActive() && cgAdapter.adblock(); }
   function cgActivate() {
@@ -2298,7 +2335,7 @@
       Ads.configure({ caps: { interstitialGapMs: 0 } });   /* the SDK decides the midgame frequency */
       Ads.setAdapter(cgAdapter);
       Ads.loadingStart(); Ads.loadingStop();               /* single bundle : the load is over when init resolves */
-      if (S.mode === 'play') Ads.gameplayStart();
+      if (S.mode === 'play') cgGameplayStart();
       try {
         Promise.resolve(s.ad.hasAdblock()).then(function (b) { cgAdapter.setAdblock(b); if (b) ui(); }, function () { });
       } catch (e) { }
@@ -2311,6 +2348,270 @@
     Promise.resolve(p).then(function () { clearTimeout(timer); ready(); }, function () { clearTimeout(timer); fail(); });
     window.addEventListener('keydown', function (ev) { if (ev.key === 'ArrowDown') ev.preventDefault(); });
   }
+  /* init CrazyGames cloud save (SDK data module) for cross-device progress in iframe.
+     SDK v3 data module contract (crazygames-sdk-v3.js, v3.8.0) :
+       - getItem(key) -> string | null      (values are STRINGS, never objects)
+       - setItem(key, value)                (value is stringified, then auto-persisted)
+       - removeItem(key) / clear()
+     There is NO load() and NO save() : the payload is fetched during SDK.init() and every
+     setItem is pushed to the host (1 MB total JSON, checkDataLimits THROWS past that).
+     The module only appears once init() resolves, and init() itself waits for the cloud
+     payload (up to 10 s), so it is waited for separately from the 3 s gameplay init.
+     Rule #1 here: cloud sync must never throw into gameplay. save.onChange() is used (GC.Save
+     already try/catches every listener), so no gameplay call site can ever be broken by it. */
+  function initCrazyGamesCloudSave() {
+    var SAVE_KEY = 'ghostline_save';
+    var STAMP_KEY = 'cgSyncT';                      /* local-only marker, never sent to the cloud */
+    var lastPushed = null;
+    var busy = false;
+    var synced = false;                              /* no push before the first pull, or a stale
+                                                        local save would overwrite a newer cloud */
+
+    function dataMod() {
+      try {
+        var d = cgSdk() && cgSdk().data;
+        return (d && typeof d.getItem === 'function' && typeof d.setItem === 'function') ? d : null;
+      } catch (e) { return null; }
+    }
+    function stamp(o) { try { return JSON.stringify(o); } catch (e) { return ''; } }
+
+    /* The WHOLE save, not a hand-listed set of keys : GC.Progress keeps 'progress', GC.Economy
+       'economy' (coins/earned/spent/journal nested inside), and the shop/daily modules have their
+       own keys too, so any list would silently drop part of the player state. */
+    function snapshot() {
+      var d = save.get();
+      var out = {};
+      if (d && typeof d === 'object') {
+        for (var k in d) if (Object.prototype.hasOwnProperty.call(d, k) && k !== STAMP_KEY) out[k] = d[k];
+      }
+      return out;
+    }
+    function localT() { var t = +save.get(STAMP_KEY) || 0; return isFinite(t) ? t : 0; }
+
+    /* local -> cloud. No-op when the payload has not changed since the last push. */
+    function push(m) {
+      var data = snapshot();
+      var h = stamp(data);
+      if (h === lastPushed) return;
+      try {
+        m.setItem(SAVE_KEY, JSON.stringify({ v: 1, t: Date.now(), d: data }));
+        lastPushed = h;
+        save.set(STAMP_KEY, Date.now());
+      } catch (e) { /* over the 1 MB data limit, or the module is disabled : local save carries on */ }
+    }
+
+    /* cloud -> local, only when the cloud copy is strictly newer than what this device pushed. */
+    function pull(m) {
+      var raw = null;
+      try { raw = m.getItem(SAVE_KEY); } catch (e) { return false; }
+      if (!raw) return false;
+      var blob = null;
+      try { blob = JSON.parse(raw); } catch (e) { return false; }
+      if (!blob || blob.v !== 1 || !blob.d || typeof blob.d !== 'object') return false;
+      var cloudT = +blob.t || 0;
+      if (!(cloudT > localT())) return false;
+      var changed = false;
+      var local = save.get() || {};
+      for (var k in blob.d) {
+        if (!Object.prototype.hasOwnProperty.call(blob.d, k) || k === STAMP_KEY) continue;
+        if (blob.d[k] === undefined) continue;
+        if (stamp(local[k]) !== stamp(blob.d[k])) { save.set(k, blob.d[k]); changed = true; }
+      }
+      if (changed) { save.set(STAMP_KEY, cloudT); lastPushed = stamp(snapshot()); }
+      return changed;
+    }
+
+    function sync() {
+      var m = dataMod();
+      if (!m) return;
+      var changed = false;
+      busy = true;
+      try { changed = pull(m); } catch (e) { }
+      try { if (!changed) push(m); } catch (e) { }
+      busy = false;
+      synced = true;
+      if (changed) { try { save.flush(); } catch (e) { } ui(); }
+    }
+
+    save.onChange(function () { if (busy || !synced) return; try { push(dataMod()); } catch (e) { } });
+
+    var tries = 0;
+    (function wait() {
+      if (dataMod()) { sync(); return; }
+      if (tries++ < 120) setTimeout(wait, 100);   /* up to 12 s : init() waits on the cloud payload */
+    })();
+  }
+
+  /* Full CrazyGames SDK integration (v3) : happyTime, gameplay events, level events */
+  function initCrazyGamesFullSDK() {
+    if (!window.CrazyGames || !CrazyGames.SDK || !CrazyGames.SDK.game) return;
+    var CGGAME = CrazyGames.SDK.game;
+    var happyTimeTimer = null;
+    var lastLevel = null;
+
+    function startHappyTime() {
+      if (happyTimeTimer) return;
+      happyTimeTimer = setInterval(function () {
+        try { CGGAME.happytime(); } catch (e) {}   /* the SDK spells it lowercase */
+      }, 30000); // every 30 seconds as per CG guidelines
+    }
+
+    function stopHappyTime() {
+      if (happyTimeTimer) { clearInterval(happyTimeTimer); happyTimeTimer = null; }
+    }
+
+    /* Level / gameplay milestones.
+       The v3 game module has NO levelStart/levelComplete/levelFail/event (they were removed:
+       game events are declared in the dev portal, not called from the client), and the analytics
+       module only exposes trackOrder. So these go to the game's own telemetry pipeline, which is
+       what the dashboard actually consumes. Everything is guarded : telemetry must never break play. */
+    function mark(name, data) {
+      try { T('custom', Object.assign({ name: name, ts: Date.now() }, data || {})); } catch (e) { }
+    }
+
+    function onLevelStart(level) {
+      if (lastLevel === level) return;
+      lastLevel = level;
+      mark('level_start', { level: level });
+    }
+
+    function onLevelComplete(level, stars, durationSec) {
+      mark('level_complete', { level: level, stars: stars, durationSec: durationSec });
+    }
+
+    function onLevelFail(level, cause, beat) {
+      mark('level_fail', { level: level, cause: cause, beat: beat });
+    }
+
+    function onSurgeTrigger(method) {
+      mark('surge_trigger', { method: method });
+    }
+
+    function onSurgeEnd() {
+      mark('surge_end', {});
+    }
+
+    function onSkinUnlock(skinId, method) {
+      mark('skin_unlock', { skin: skinId, method: method });
+    }
+
+    function onDailyPlay(official) {
+      mark('daily_play', { official: official });
+    }
+
+    /* Mute is host-driven on CrazyGames, not game-driven : there is no game.mute()/unmute() in v3.
+       The player mutes from the CG shell, the SDK broadcasts it, and the game has to follow. */
+    function bindMuteSync() {
+      if (typeof CGGAME.addSettingsChangeListener !== 'function') return;
+      try {
+        CGGAME.addSettingsChangeListener(function (settings) {
+          if (!settings || typeof settings.muteAudio !== 'boolean') return;
+          if (settings.muteAudio === audio.muted()) return;
+          try {
+            audio.setMuted(!!settings.muteAudio);
+            audioSetMuted(audio.muted());
+            if (audio.muted()) musicCut(); else ensureMusic();
+            ui();
+          } catch (e) { }
+        });
+      } catch (e) { }
+    }
+
+    /* Hook into game loop for happyTime */
+    var originalLoopStart = loop.start;
+    loop.start = function () {
+      originalLoopStart.apply(this, arguments);
+      if (S.mode === 'play') startHappyTime();
+    };
+    var originalLoopPause = loop.pause;
+    loop.pause = function (why) {
+      if (loopPauseWhy(why) && S.mode === 'play') {
+        stopHappyTime();
+      }
+      originalLoopPause.apply(this, arguments);
+    };
+    var originalLoopResume = loop.resume;
+    loop.resume = function (why) {
+      originalLoopResume.apply(this, arguments);
+      if (loopPauseWhy(why) && S.mode === 'play') {
+        startHappyTime();
+      }
+    };
+
+    /* Hook into game state changes */
+    var originalStartLevel = startLevel;
+    startLevel = function (n, opts) {
+      var isBonus = isBonusLevel(n);
+      if (isBonus && !hauntedLevelUnlocked(n)) {
+        for (var _i = 1; _i <= WORLD_LEVELS; _i++) { try { progress.win(1, _i, 3, 0); } catch (e) {} }
+      }
+      onLevelStart(n);
+      return originalStartLevel.apply(this, arguments);
+    };
+
+    var originalWin = win;
+    win = function () {
+      onLevelComplete(S.level, S.lvl ? 3 : 0, S.elapsed);
+      return originalWin.apply(this, arguments);
+    };
+
+    var originalDie = die;
+    die = function (cause, culprit) {
+      onLevelFail(S.level, cause, S.beat);
+      return originalDie.apply(this, arguments);
+    };
+
+    var originalRetry = retry;
+    retry = function () {
+      onLevelFail(S.level, 'retry', S.beat);
+      return originalRetry.apply(this, arguments);
+    };
+
+    var originalTriggerSurge = triggerSurge;
+    triggerSurge = function (method) {
+      onSurgeTrigger(method);
+      return originalTriggerSurge.apply(this, arguments);
+    };
+
+    /* Hook surge end - monitor S.surge.active */
+    var surgeCheckTimer = setInterval(function () {
+      if (S.surge.wasReady && !S.surge.active) {
+        onSurgeEnd();
+      }
+    }, 1000);
+
+    /* Hook skin unlock */
+    var originalShopEquip = shop.equip;
+    shop.equip = function (id) {
+      var wasOwned = shop.owns(id);
+      var r = originalShopEquip.apply(this, arguments);
+      if (!wasOwned && shop.owns(id)) {
+        var method = economy.canAfford(SKINS.find(s => s.id === id)?.unlock?.value || 0) ? 'coins' : 'ad';
+        onSkinUnlock(id, method);
+      }
+      return r;
+    };
+
+    /* Hook daily play */
+    var originalStartDaily = startDaily;
+    startDaily = function () {
+      onDailyPlay(true);
+      return originalStartDaily.apply(this, arguments);
+    };
+
+    /* Cleanup on page unload */
+    window.addEventListener('beforeunload', function () {
+      stopHappyTime();
+    });
+
+    /* Initial happyTime if already playing */
+    if (S.mode === 'play') startHappyTime();
+
+    bindMuteSync();
+
+    console.log('[CG Full SDK] initialized');
+  }
+
   /* portal adapter active (Poki or CrazyGames) : the retry goes through an interstitial opportunity */
   function portalActive() { return pokiActive() || cgActive(); }
 
@@ -2324,6 +2625,8 @@
     slowmo: 1, hint: null, hintT: 0, ripple: null,
     /* V5 : tempo of the current level (bpm), rate = beats per REAL second ; intro card countdown (real seconds) ; custom = loadLine test level */
     bpm: BASE_BPM, rate: BASE_BPM / 60, introT: 0, custom: false,
+    /* CrazyGames SDK : gameplayStart tracking */
+    cgGameplayStarted: false,
     /* V5 (14.2) PERFECT : count this run, popup timer, arc position doubled (-1 = none), last perfect info */
     perfectN: 0, perfectT: 0, x2Arc: -1, perfectLast: null, battFlash: 0, runBonus: 0,   /* runBonus = extra coins from x2 arcs (economy + score ; stars count coins, not value) */
     /* SURGE (13.1) : active, t = beats remaining, lift 0..1, factor = world speed multiplier, recover = seconds of speed ramp-down */
@@ -2341,8 +2644,9 @@
     S.beat = 0; S.elapsed = 0; S.ghost = false; S.gauge = GAUGE_MAX; S.exhausted = false; S.runCoins = 0; S.invuln = 0;
     S.deadT = 0; S.cause = null; S.culprit = null; S.usedContinue = false; S.shake = 0; S.flash = 0; S.wonT = 0;
     S.heldOnce = false; S.releasedOnce = false; S.slowmo = 1; S.hint = null; S.hintT = 0; S.ripple = null;
+    S.cgGameplayStarted = false;
     S.bpm = S.lvl ? bpmAt(S.lvl, 0) : BASE_BPM; S.rate = S.bpm / 60;
-    S.perfectN = 0; S.perfectT = 0; S.x2Arc = -1; S.perfectLast = null; S.battFlash = 0; S.runBonus = 0;
+    S.perfectN = 0; S.perfectT = 0; S.x2Arc = -1; S.perfectLast = null; S.battFlash = 0; S.runBonus = 0; S.perfectSlowmoT = 0;
     if (S.surge.active || S.surge.recover > 0) endSurge();
     var sg = S.surge; sg.active = false; sg.t = 0; sg.lift = 0; sg.factor = 1; sg.recover = 0; sg.coins = 0; sg.smashed = 0; sg.method = null;
     sg.wasReady = surgeReady(); sg.readyT = sg.wasReady ? SURGE_READY_LABEL_S : 0; sg.tutT = sg.wasReady && !tut().surge ? SURGE_TUT_S : 0;
@@ -2438,7 +2742,7 @@
     var st = save.get('stats'); st.runs = (st.runs | 0) + 1; save.touch();
     if (!isBonus) progress.setCurrent(1, n);
     T('level_start', { world: 1, level: n, attempt: isBonus ? 1 : progress.attempt(1, n), bpm: S.bpm, bonus: isBonus });
-    Ads.gameplayStart();
+    cgGameplayStart();
     ui();
   }
   /* applyLevelTheme(n) : mutate the global PAL object to haunted palette for bonus levels, back to default otherwise.
@@ -2457,7 +2761,7 @@
     S.introT = 0;
     if (!save.get('seen')) save.set('seen', true);
     T('daily_start', { date: d.date, seed: d.seed, official: official });
-    Ads.gameplayStart();
+    cgGameplayStart();
     ui();
   }
   /* test hook (14.6) : play an arbitrary line at an arbitrary tempo, outside the progression (no progress/perfect save) */
@@ -2466,7 +2770,7 @@
     S.lvl = compile({ id: 'test', name: 'Test Line', bpm: bpm || BASE_BPM, diff: 0, intro: null, line: line });
     resetRun();
     S.introT = 0;
-    Ads.gameplayStart();
+    cgGameplayStart();
     ui();
   }
   /* retry : Poki order "death and restart = gameplayStop -> commercialBreak -> gameplayStart" ; with the Stub (dev, generic portal
@@ -2478,7 +2782,7 @@
     var cgSkip = cgActive() && S.mode === 'dead' && !$('btnContinue').classList.contains('hidden');
     if (portalActive() && S.mode !== 'play' && !cgSkip) Ads.request('interstitial').then(go); else go();
   }
-  function leavePlay() { if (S.mode === 'play') { Ads.gameplayStop(); musicCut(); } ensureMusic(); }
+  function leavePlay() { if (S.mode === 'play') { cgGameplayStop(); musicCut(); } ensureMusic(); }
   function toMenu() { leavePlay(); S.mode = 'menu'; S.daily = false; ui(); }
   function toTitle() { leavePlay(); S.mode = 'title'; S.daily = false; applyLevelTheme(0); ui(); }
   function clickPlay() { audio.unlock(); ensureMusic(); sfx('click'); startLevel(nextLevelNumber()); }
@@ -2497,7 +2801,7 @@
     var sz = vp.size();
     burst(PLAYER_X * sz.w, LINE_Y * sz.h, cause === 'field' ? PAL.player : PAL.obstacle, cause === 'field' ? 'dissolve' : 'burst', 36);
     sfx('death');
-    Ads.gameplayStop();
+    cgGameplayStop();
     if (S.daily) {
       var r = daily.submit(dailyScore(false));
       S.lastResult = { score: dailyScore(false), rank: r.rank, best: r.best, official: r.official, finished: false };
@@ -2518,7 +2822,7 @@
     burst(PLAYER_X * sz.w, LINE_Y * sz.h, PAL.player, 'burst', 40);
     burst(PLAYER_X * sz.w, LINE_Y * sz.h, PAL.coin, 'burst', 20);
     sfx('win');
-    Ads.gameplayStop();
+    cgGameplayStop();
     var st = save.get('stats'); st.wins = (st.wins | 0) + 1; save.touch();
     if (S.daily) {
       var score = dailyScore(true);
@@ -2549,6 +2853,7 @@
   function update(dt) {
     if (S.shake > 0) S.shake -= dt;
     if (S.flash > 0) S.flash -= dt;
+    if (S.perfectSlowmoT > 0) { S.perfectSlowmoT -= dt; if (S.perfectSlowmoT <= 0) S.slowmo = 1; }
     for (var i = particles.length - 1; i >= 0; i--) {
       var p = particles[i]; p.x += p.vx * dt; p.y += p.vy * dt; p.life -= dt;
       if (p.kind === 'burst') p.vy += 300 * dt; else p.vx *= 0.98;
@@ -2566,7 +2871,7 @@
     if (S.mode === 'title' || S.mode === 'menu') titlePadTick();     /* (15) slow pad alone, only once the audio is unlocked by a gesture */
     if (S.mode !== 'play') return;
     /* V5 (14.4) : intro card, real time, the world waits ; a tap skips it */
-    if (S.introT > 0) { S.introT -= dt; if (S.introT <= 0) S.introT = 0; return; }
+    if (S.introT > 0) { S.introT -= dt; if (S.introT <= 0) { S.introT = 0; /* intro finished -> gameplay starts */ if (!S.cgGameplayStarted) cgGameplayStart() } return; }
 
     S.elapsed += dt;
     var lvl = S.lvl, sg = S.surge;
@@ -2703,6 +3008,11 @@
     MUS.octave = true;                                /* (15) the next lead is doubled at the octave */
     if (scheduleTone(0, SPEC.perfect)) logAudio('perfect', S.beat); else sfx('unlock');
     T('perfect', { level: levelLabel(), beat: Math.round(S.beat * 10) / 10, kind: ghost ? 'hold' : 'release' });
+    /* PERFECT juice (micro hit-pause + flash + particle burst) : 60 ms slow-mo, white pulse, ring burst */
+    S.slowmo = 0.08;                                   /* ~60 ms real at 120 BPM (0.5 s/beat) */
+    S.perfectSlowmoT = 0.06;                           /* real seconds before restoring slowmo=1 */
+    S.flash = 0.12;                                    /* white screen pulse */
+    var sz = vp.size(); burst(PLAYER_X * sz.w, LINE_Y * sz.h, PAL.player, 'burst', 18);
   }
   /* an obstacle passed alive = cleared cleanly : +1 Surge (+2 after a PERFECT) and one pentatonic note, one degree higher per consecutive
      success (13.2) ; (15) the melody is tuned on the current chord (pentatonic of the chord, from its root, 2 octaves of range) */
@@ -4404,6 +4714,27 @@
   $('btnDaily').onclick = function () { audio.unlock(); ensureMusic(); sfx('click'); openDaily(); };
   $('btnChest').onclick = function () { audio.unlock(); claimChest(); };
   $('btnMute').onclick = toggleSound;
+  /* Legal links : an explicit window.open from the click handler, because the game is served in an
+     iframe on CrazyGames / Poki and a bare target="_blank" anchor depends on the host granting
+     allow-popups to the frame. Here the call is made from a real user gesture, which is what the
+     popup heuristic actually wants. preventDefault keeps the anchor's href as the no-JS fallback.
+     Note the deliberate absence of "noopener" in the features string : per spec a window.open that
+     asks for noopener returns null, so pairing it with a `if (!w) navigate` fallback would throw the
+     player out of the game on every single tap. opener is nulled by hand instead.
+     If popups are genuinely blocked (w === null), the player is told where to find the document
+     rather than the frame being navigated away, which would drop them out of the game. */
+  (function bindLegal() {
+    var links = document.querySelectorAll('a[data-legal]');
+    for (var i = 0; i < links.length; i++) {
+      links[i].addEventListener('click', function (e) {
+        e.preventDefault();
+        var w = null;
+        try { w = window.open(this.href, '_blank'); } catch (err) { }
+        if (w) { try { w.opener = null; } catch (err2) { } }
+        else toast('Open ' + this.href.replace(/^https?:\/\//, '').replace(/\/$/, '') + ' in a new tab');
+      });
+    }
+  })();
   $('btnFull').onclick = function () {
     var d = document, el = d.documentElement;
     if (d.fullscreenElement) { if (d.exitFullscreen) d.exitFullscreen(); }
@@ -4429,7 +4760,7 @@
         S.mode = 'play'; S.usedContinue = true; S.invuln = CONTINUE_INVULN_S; S.beat = Math.max(0, S.deathBeat - 1);
         S.ghost = false; S.exhausted = false; S.gauge = GAUGE_MAX; S.cause = null; S.culprit = null; particles = [];
         T('custom', { name: 'continue_used', level: S.level, beat: Math.round(S.beat * 10) / 10 });
-        Ads.gameplayStart();
+        cgGameplayStart();
       }
       ui();
     });
@@ -4487,14 +4818,24 @@
      the 'test' (hook) and 'ad' (ad gate) pauses are not gameplay interruptions of that kind */
   function loopPauseWhy(why) { return why !== 'test' && why !== 'ad' && !cgActive(); }   /* CrazyGames handles focus loss itself */
   var loop = GC.Loop.create({ update: update, render: render,
-    onPause: function (why) { if (loopPauseWhy(why) && S.mode === 'play') Ads.gameplayStop(); },
-    onResume: function (why) { if (loopPauseWhy(why) && S.mode === 'play') Ads.gameplayStart(); } });
+    onPause: function (why) { if (loopPauseWhy(why) && S.mode === 'play') cgGameplayStop(); },
+    onResume: function (why) { if (loopPauseWhy(why) && S.mode === 'play') cgGameplayStart(); } });
   vp.onChange(function () { render(0, 0); });
   S.mode = 'title';
   ui();
   loop.start();
   if (window.HR_PORTAL === 'poki') pokiActivate();
   if (window.HR_PORTAL === 'crazygames') cgActivate();
+  /* Cloud save for the CrazyGames iframe (SDK data module, cross-device progress).
+     No SDK.data guard here on purpose : the module only exists after init() resolves, so the
+     function waits for it internally instead of being skipped at load time. */
+  if (window.HR_PORTAL === 'crazygames') {
+    initCrazyGamesCloudSave();
+  }
+  /* Full CrazyGames SDK integration (v3) : happyTime, gameplay events, level events */
+  if (window.HR_PORTAL === 'crazygames' && window.CrazyGames && CrazyGames.SDK && CrazyGames.SDK.game) {
+    initCrazyGamesFullSDK();
+  }
 
   /* =================== 7. test hook =================== */
   if (TEST) {
@@ -4540,8 +4881,17 @@
       clickPlay: clickPlay, toTitle: toTitle,
       progress: progress, economy: economy, shop: shop, daily: daily, ads: Ads, save: save, audio: audio, loop: loop, button: button, GC: GC,
       levels: LEVELS, validateLine: validateLine, generateDaily: generateDaily, DAILY_RULE_LEVEL: DAILY_RULE_LEVEL,
-      /* startLevel(n, withIntro) : the hook skips the intro card unless withIntro is true (tests drive the simulation directly) */
-      startLevel: function (n, withIntro) { freeze(); startLevel(n, { intro: !!withIntro }); },
+      /* startLevel(n, withIntro) : the hook skips the intro card unless withIntro is true (tests drive the simulation directly).
+         For seasonal bonus levels (13-15), the hook bypasses the "clear 12 first" gate : tests and video capture pipelines
+         need direct access to any level without playing 12 levels first. Only exposed in #test mode. */
+      startLevel: function (n, withIntro) {
+        freeze();
+        if (isBonusLevel(n) && !hauntedLevelUnlocked(n)) {
+          /* mark all 12 canonical levels as won so hauntedLevelUnlocked() returns true, without changing the target level */
+          for (var _i = 1; _i <= WORLD_LEVELS; _i++) { try { progress.win(1, _i, 3, 0); } catch (e) {} }
+        }
+        startLevel(n, { intro: !!withIntro });
+      },
       startDaily: function () { freeze(); startDaily(); },
       setHold: function (v) { if (v) button.press(); else button.release(); },
       step: function (ms) { freeze(); var n = Math.max(1, Math.round((ms / 1000) / loop.step)); loop.tick(n); return S.beat; },
